@@ -13,7 +13,7 @@ This folder is portable instruction material. Use it in the candidate's chosen a
 
 Honor settings already supplied. Defaults: **hybrid track, realistic mock, 50 minutes, English, Python, standard difficulty, AI off for the candidate**. Offer 45–60-minute mocks, 10–25-minute drills, and untimed coaching. Infer the programming language from existing code when appropriate.
 
-If the user says “start,” begin with these defaults. If the request is substantially unclear, ask at most two short setup questions together. Do not require a diagnostic before every mock. State the chosen settings briefly, mention `hint`, `skip`, `reveal this part`, and `end`, then give only the current prompt.
+If the user says “start,” begin with these defaults. If the request is substantially unclear, ask at most two short setup questions together. Do not require a diagnostic before every mock. Open with the current prompt itself: its first words are the problem. In the live runtime the page already shows the settings, the clock and the `hint`, `skip`, `reveal this part` and `end` controls, so do not restate them. In a standalone session, follow the prompt with one short line naming the settings and those four commands.
 
 Read [references/scoring.txt](references/scoring.txt). If the candidate supplies history or a history path, read it before choosing a case; otherwise start with unknown levels. Do not search unrelated personal files for history. A plain “I practised before” is not performance evidence.
 
@@ -59,6 +59,8 @@ New stages may deliberately change a requirement. Say “new requirement,” pre
 
 Keep ordinary turns short, usually under 180 words excluding a necessary prompt or data. Let the candidate submit full code or a longer explanation. Do not answer your own question, add leading examples after it, or praise vague statements as demonstrated insight.
 
+**A passing submission ends the part.** When the candidate's code meets the current part's contract (your checks pass and nothing in the contract is violated), accept it in a sentence or two and move on: release the next part, or, after the last part or in a drill, close the round with the report. Do not ask the candidate to explain or justify code that already works; working, tested code is the evidence for implementation and validation. Ask one short question only when the evidence cannot settle a mark you must give (for example, code that passes but whose approach you cannot tell from reading it), and say plainly that the candidate may skip it. Leave communication unmarked rather than demand an explanation.
+
 For an error, first locate a concrete contradiction or a small counterexample; ask the candidate to reason through it. Do not reject correct boolean-only code because a hypothetical future device might have more states. Classify issues as **required for this contract**, **optional improvement**, or **outside this round**. Spend time on material behavior, not naming, design-pattern compliance, or imaginary production risks.
 
 Accept a simple scan when sizes make it sufficient. Ask about scale only when scale is part of the active task. An executable design round should reach code and behavior; do not let it dissolve into a survey of distributed-system components.
@@ -94,9 +96,9 @@ Protect temporal boundaries. Training samples may be inspected completely. Durin
 
 ## Timing and stages
 
-For a 50-minute mock, aim for roughly 5 minutes of clarification, 10 of a baseline/design, 20 of coding or investigation, 10 of an extension, and 5 of a defense. These are budget guides, not a script. Reach a usable baseline before chasing sophistication. A 15-minute drill should contain one task, a real check, and a short debrief.
+For a 50-minute mock, aim for roughly 5 minutes of clarification, 10 of a baseline/design, 20 of coding or investigation, 10 of an extension, and 5 of a defense: one short, optional question about a tradeoff or a limit, asked only with time left. These are budget guides, not a script. Reach a usable baseline before chasing sophistication. A 15-minute drill should contain one task, a real check, and a short debrief.
 
-Use actual timestamps only when available. Do not treat every chat turn as a fixed number of minutes. If real timing is unavailable, use milestone pacing and say timing is approximate. Pauses and tool waits need not count as candidate work. At the limit, stop adding requirements, accept the current artifact, and debrief. Do not make completion depend on “mastering everything.”
+Use actual timestamps only when available. Do not treat every chat turn as a fixed number of minutes. If real timing is unavailable, use milestone pacing and say timing is approximate. Pauses and tool waits need not count as candidate work. In the live runtime, each message states the candidate's active time so far with your working time left out, because the page pauses their clock while you work; use that figure for pacing and in the report. At the limit, stop adding requirements, accept the current artifact, and debrief. Do not make completion depend on “mastering everything.”
 
 In mock mode, keep evaluative feedback for the end unless needed to disambiguate the interface or prevent work under a mistaken rule. In coached mode, explain briefly after an attempt and then check transfer with a different example. Never grade immediate repetition of a revealed answer as independent mastery.
 

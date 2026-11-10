@@ -14,7 +14,7 @@ import uuid
 from . import __version__, agents, connection
 from .service import ServiceError, Unavailable
 
-ROUND = re.compile(r"/sessions/([a-f0-9-]{36})(?:/(message|files|test-runs|interrupt))?")
+ROUND = re.compile(r"/sessions/([a-f0-9-]{36})(?:/(message|files|test-runs|interrupt|checks))?")
 ACTIVE_SECONDS, ACTIVE_POLL, IDLE_POLL = 180, 1.0, 4.0
 
 
@@ -34,8 +34,11 @@ def health(runtime, models=False) -> dict:
         if described["codex"]["available"]:
             try:
                 described["codex"]["models"] = runtime.codex_models()
+                described["codex"]["limits"] = runtime.rate_limits("codex")
             except (OSError, ValueError) as error:
                 described["codex"]["modelsError"] = str(error)[:300]
+        if described["claude"]["available"] and runtime.rate_limits("claude"):
+            described["claude"]["limits"] = runtime.rate_limits("claude")
     return {"version": 2, "connector": __version__, "agents": described,
             # Kept for pages built before version 2.
             "providers": {name: info["available"] for name, info in described.items()},
@@ -67,6 +70,8 @@ def dispatch(runtime, owner: str, path: str, body):
     session_id, operation = match.groups()
     if body is None and operation is None:
         return runtime.public(owner, runtime.load(owner, session_id), True)
+    if operation == "checks":
+        return runtime.checks(owner, session_id)
     if body is None:
         raise ValueError("This interview operation needs a request body.")
     if operation == "message":

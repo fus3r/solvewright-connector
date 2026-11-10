@@ -173,7 +173,7 @@ def interrupt_process(process) -> None:
         process.terminate()
 
 
-def claude_command(binary: str, directory: Path, state: dict, sandbox: bool, read_roots: list[str]) -> list[str]:
+def claude_command(binary: str, directory: Path, state: dict, sandbox: bool, read_roots: list[str], effort: str | None = None) -> list[str]:
     command = [binary, "--print", "--output-format", "stream-json", "--verbose", "--json-schema", json.dumps(REPLY_SCHEMA),
                "--restricted", "--safe-mode", "--strict-mcp-config",
                "--permission-mode", "acceptEdits", "--permission-prompts", "none"]
@@ -190,7 +190,7 @@ def claude_command(binary: str, directory: Path, state: dict, sandbox: bool, rea
     model = state["settings"].get("model", "").strip()
     if model:
         command += ["--model", model]
-    effort = state["settings"].get("effort", "").strip()
+    effort = (state["settings"].get("effort", "") if effort is None else effort).strip()
     if effort:
         command += ["--effort", effort]
     return command
@@ -207,6 +207,27 @@ def claude_preamble(sandbox: bool) -> str:
             ".examiner/manifest.json that the reference was not executed, and say so when it matters.\n\n")
 
 
+def link_folders(path: Path, limit: int = 40) -> set[Path]:
+    """The folder of every symbolic link met while resolving `path`, one component at a time."""
+    folders: set[Path] = set()
+    pending = list(Path(os.path.abspath(path)).parts)
+    current = Path(pending.pop(0))
+    hops = 0
+    while pending and hops < limit:
+        candidate = current / pending.pop(0)
+        if candidate.is_symlink():
+            hops += 1
+            folders.add(candidate.parent)
+            target = Path(os.readlink(candidate))
+            if target.is_absolute():
+                current, pending = Path(target.parts[0]), list(target.parts[1:]) + pending
+            else:
+                pending = list(target.parts) + pending
+        else:
+            current = candidate
+    return folders
+
+
 class CodexClient:
     """Newline JSON-RPC client for Codex's documented app-server, isolated."""
 
@@ -218,6 +239,10 @@ class CodexClient:
         self.lock = threading.Lock()
         self.condition = threading.Condition()
         self.pending, self.finished, self.messages = {}, {}, {}
+        # Per thread: what the examiner starts doing, for the page's progress line. Never its content.
+        self.watchers: dict = {}
+        self.limits: dict | None = None
+        self.limits_at = 0.0
         self.sequence = 0
         self.loaded: set[str] = set()
         self.closed = threading.Event()
@@ -271,7 +296,12 @@ class CodexClient:
             if parent.resolve().is_relative_to(home):
                 # The release folder, e.g. ~/.codex/packages/standalone/releases/<version>/.
                 roots.append(str(parent.parent.resolve() if parent.name == "bin" else parent.resolve()))
-        return roots
+        # Codex starts itself again inside the sandbox (to load a resumed thread's instructions), so every link on
+        # the way to the binary must be readable too: ~/.local/bin/codex -> .../standalone/current/bin/codex, and
+        # `current` -> releases/<version>. Without the folder holding `current`, resuming a round after the
+        # connector restarts fails with "execvp() ... Operation not permitted".
+        roots += [str(folder) for folder in link_folders(Path(self.binary)) if folder.resolve().is_relative_to(home)]
+        return sorted(set(roots))
 
     def _launch(self, overrides: list[str]) -> None:
         self.closed.clear()
@@ -340,6 +370,18 @@ class CodexClient:
                     elif "id" in data and "method" in data:
                         # No approval is ever granted on the person's behalf.
                         self.send({"id": data["id"], "error": {"code": -32601, "message": "Approval is unavailable in Interview Lab."}})
+                    elif data.get("method") == "item/started":
+                        params = data["params"]
+                        watcher = self.watchers.get(params.get("threadId"))
+                        if watcher:
+                            try:
+                                watcher(params.get("item") or {})
+                            except Exception:  # A progress line must never break the turn.
+                                pass
+                    elif data.get("method") == "account/rateLimits/updated":
+                        snapshot = (data.get("params") or {}).get("rateLimits")
+                        if isinstance(snapshot, dict):
+                            self.limits, self.limits_at = snapshot, time.monotonic()
                     elif data.get("method") == "item/completed":
                         params = data["params"]
                         item = params.get("item", {})
@@ -379,7 +421,19 @@ class CodexClient:
         params["sandbox"] = "workspace-write"
         return self.rpc("thread/start", params)["thread"]["id"]
 
-    def turn(self, state: dict, directory: Path, prompt: str, callback, cancelled=None) -> dict:
+    def rate_limits(self, max_age: float = 60) -> dict | None:
+        """The account's Codex usage windows (5-hour and weekly), read without a model call."""
+        if self.limits is not None and time.monotonic() - self.limits_at < max_age:
+            return self.limits
+        try:
+            snapshot = self.rpc("account/rateLimits/read", {}, timeout=10).get("rateLimits")
+        except (ValueError, OSError):
+            return self.limits
+        if isinstance(snapshot, dict):
+            self.limits, self.limits_at = snapshot, time.monotonic()
+        return self.limits
+
+    def turn(self, state: dict, directory: Path, prompt: str, callback, cancelled=None, effort=None, watch=None) -> dict:
         if cancelled and cancelled.is_set():
             raise ValueError("The interviewer turn was stopped. Send a message to continue.")
         model = state["settings"].get("model", "").strip()
@@ -398,24 +452,29 @@ class CodexClient:
             raise ValueError("The interviewer turn was stopped. Send a message to continue.")
         params = {"threadId": thread, "cwd": str(directory), "input": [{"type": "text", "text": prompt}],
                   "outputSchema": REPLY_SCHEMA, "approvalPolicy": "never"}
-        effort = state["settings"].get("effort", "").strip()
+        effort = (state["settings"].get("effort", "") if effort is None else effort).strip()
         if effort:
             params["effort"] = effort
         if not self.profile:
             params["sandboxPolicy"] = {"type": "workspaceWrite", "writableRoots": [str(directory)], "networkAccess": False}
-        started = self.rpc("turn/start", params)
-        turn = started["turn"]["id"]
-        state["activeTurn"] = turn
-        callback()
-        if cancelled and cancelled.is_set():
-            self.interrupt(state)
-        key = (thread, turn)
-        with self.condition:
-            while key not in self.finished:
-                if self.closed.is_set() or self.process.poll() is not None:
-                    raise ValueError("Codex stopped. Send another message to resume this round.")
-                self.condition.wait(timeout=5)
-            completed = self.finished.pop(key)
+        if watch:
+            self.watchers[thread] = watch
+        try:
+            started = self.rpc("turn/start", params)
+            turn = started["turn"]["id"]
+            state["activeTurn"] = turn
+            callback()
+            if cancelled and cancelled.is_set():
+                self.interrupt(state)
+            key = (thread, turn)
+            with self.condition:
+                while key not in self.finished:
+                    if self.closed.is_set() or self.process.poll() is not None:
+                        raise ValueError("Codex stopped. Send another message to resume this round.")
+                    self.condition.wait(timeout=5)
+                completed = self.finished.pop(key)
+        finally:
+            self.watchers.pop(thread, None)
         if completed["status"] != "completed":
             error = completed.get("error") or {}
             raise ValueError(error.get("message", f"Codex turn {completed['status']}. Your files and conversation were kept."))

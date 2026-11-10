@@ -46,8 +46,14 @@ stop the interviewer, and sync your history. There is no request that runs a com
   keeps a hash of it.
 - **It never sees your Claude or ChatGPT credentials.** It starts the official `claude` or `codex`
   program, unmodified, which signs in the way it always does. Usage counts against your own plan.
-- **It never runs your code.** Public tests run in your browser, in Pyodide (Python compiled to
-  WebAssembly). The connector only stores the files you tested and the result.
+- **It never runs your code.** Public tests and the interviewer's private checks run in your browser,
+  in Pyodide (Python compiled to WebAssembly); the page shows each check's label and result, never its
+  code. The connector only stores the files you tested and the results.
+- **It reports progress, not content.** While the interviewer works, the page learns which kind of
+  step it is on (reading your code, writing its notes, running its checks), never what it reads,
+  writes or says. It also passes on your plan's usage when the agent reports it (Codex's usage
+  windows, Claude Code's rate-limit events), read without a model call, so replies can use less
+  effort when your window is nearly spent.
 - **It does not update itself.** What runs is the version you installed from PyPI. The interviewer's
   instructions ship inside the package (`src/solvewright/interviewer/`), so you can read exactly what
   your agent is told.
@@ -60,7 +66,7 @@ It does that inside its own agent's sandbox, confined to the folder of the curre
 | | Commands | Files | Network |
 | --- | --- | --- | --- |
 | Claude Code, macOS and Linux | Claude Code's OS sandbox | Read and write only in the round folder; the rest of your home folder is unreadable | None |
-| Codex, macOS and Linux | Codex's sandbox with a Solvewright permission profile | Read and write in your interview folders; the rest of your home folder is unreadable | None |
+| Codex, macOS and Linux | Codex's sandbox with a Solvewright permission profile | Read and write in your interview folders; read the folders Codex itself is installed in; the rest of your home folder is unreadable | None |
 | Claude Code, native Windows | No command tool at all: its sandbox needs macOS, Linux or WSL2 | The file tools stay in the round folder | None |
 
 Claude Code runs with `--restricted --safe-mode --strict-mcp-config`: your own CLAUDE.md, hooks,

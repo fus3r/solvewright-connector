@@ -8,6 +8,7 @@ it only stores the files and the results the browser reports.
 from __future__ import annotations
 
 import base64
+import difflib
 import hashlib
 import json
 import re
@@ -19,7 +20,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
-from . import agents
+from . import activity, agents
 
 SYNC_FORMAT = "solvewright-interview-sync-v1"
 SYNC_LIMIT = 5_000_000
@@ -47,6 +48,33 @@ CHOICES = {"provider": ("codex", "claude"), "style": ("quant", "tech"), "track":
 PRIVATE_LOGS = (".examiner/claude-runtime.log", ".examiner/codex-runtime.log")
 HISTORY_ROUNDS = 25
 HISTORY_MESSAGE_CHARS = 3000
+EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
+# Replies during a round stay quick; top-firm and reported rounds keep the chosen effort, up to xhigh.
+REPLY_CAP, ADVANCED_REPLY_CAP = "medium", "xhigh"
+CHECKS = ".examiner/checks"
+CHECKS_LIMIT = 400_000
+DIFF_LIMIT = 6_000
+OPENING_RULE = ("Open the message with the problem itself, starting with the task. The page already shows the settings, "
+                "the clock and the hint, skip, reveal and end controls, so do not restate them.")
+CHECKS_RULE = ("Also write the private checks the page runs in the candidate's browser when they submit: test files in "
+               ".examiner/checks/ (test_*.py, pytest or unittest) that import from solution, are self-contained (no import "
+               "of your reference, no files, network, threads, subprocesses or wall-clock timing; standard library plus "
+               "numpy only) and pass on your reference. Beside them write .examiner/checks/checks.json: {\"checks\": "
+               "[{\"id\": \"test_file.py::test_name\", \"part\": 1, \"label\": \"a short, plain name of the case\", "
+               "\"note\": \"one sentence for a failure that points at the case without giving the fix\"}]}. Labels and "
+               "notes are shown to the candidate; check code and expected values never are. Run them against your "
+               "reference, and against one plausible wrong solution, before publishing. When you release a later part, "
+               "add its checks the same way.")
+FAST_RULES = ("Answer quickly: the candidate's clock is paused while you work. Use what you already know of this round and "
+              "the changes and results above; read a file only if you need more of it. Do not re-read the instructions, do "
+              "not rerun tests whose results are above, and do not write checkpoints, hashes or review logs: the runtime "
+              "keeps every message's files and results. Update .examiner/progress.json only for a hint, reveal or skip, or "
+              "a change of part. When the current part's checks pass and nothing in its contract is violated, accept it in "
+              "a sentence or two and release the next part with its checks, or close the round if it was the last part or "
+              "a drill. Do not ask the candidate to explain code that already works; ask one short question only when the "
+              "evidence cannot settle a mark, and say they may skip it. Preserve candidate code; change it only on an "
+              "explicit assistance request. For end or debrief, write .examiner/report.json from the scoring and session "
+              "format references, using the session ID and date in session-settings.json. Return the structured reply only.")
 
 
 class SyncConflict(ValueError):
@@ -151,17 +179,62 @@ def validate_report(report, state):
 def clean_test_run(run) -> dict:
     if not isinstance(run, dict) or type(run.get("exitCode")) is not int or type(run.get("timedOut")) is not bool or not isinstance(run.get("output", ""), str):
         raise ValueError("Send the browser's test result with an exit code.")
-    tests = run.get("tests", [])
-    if not isinstance(tests, list) or len(tests) > 500:
-        raise ValueError("Too many test rows.")
-    rows = []
-    for row in tests[:200]:
-        if not isinstance(row, dict) or row.get("outcome") not in ("passed", "failed", "skipped") or not isinstance(row.get("name"), str):
-            raise ValueError("Invalid test row.")
-        rows.append({"name": row["name"][:300], "file": str(row.get("file", ""))[:300], "outcome": row["outcome"],
-                     "message": str(row.get("message", ""))[:2000]})
-    return {"at": stamp(), "exitCode": run["exitCode"], "timedOut": run["timedOut"], "output": run.get("output", "")[-30000:],
-            "tests": rows, "runner": "browser"}
+    def clean(tests, labelled=False):
+        if not isinstance(tests, list) or len(tests) > 500:
+            raise ValueError("Too many test rows.")
+        rows = []
+        for row in tests[:200]:
+            if not isinstance(row, dict) or row.get("outcome") not in ("passed", "failed", "skipped") or not isinstance(row.get("name"), str):
+                raise ValueError("Invalid test row.")
+            rows.append({"name": row["name"][:300], "file": str(row.get("file", ""))[:300], "outcome": row["outcome"],
+                         "message": str(row.get("message", ""))[:2000], **({"label": str(row.get("label", ""))[:160]} if labelled else {})})
+        return rows
+    result = {"at": stamp(), "exitCode": run["exitCode"], "timedOut": run["timedOut"], "output": run.get("output", "")[-30000:],
+              "tests": clean(run.get("tests", [])), "runner": "browser"}
+    if run.get("hidden") is not None:
+        result["hidden"] = clean(run["hidden"], labelled=True)
+    return result
+
+
+def active_minutes(state, now=None):
+    """Minutes since the round's first examiner message, without the spans the examiner held the round."""
+    parse = lambda value: datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    try:
+        times = [(message["role"], parse(message["at"])) for message in state.get("messages", [])]
+    except (KeyError, TypeError, ValueError):
+        return None
+    first = next((at for role, at in times if role == "assistant"), None)
+    if first is None:
+        return None
+    end = now or datetime.now(timezone.utc)
+    held, waiting = 0.0, None
+    for role, at in times:
+        if role == "user":
+            waiting = at
+        elif waiting is not None:
+            held += max(0.0, (at - waiting).total_seconds())
+            waiting = None
+    if waiting is not None:
+        held += max(0.0, (end - waiting).total_seconds())
+    return max(0, round(((end - first).total_seconds() - held) / 60))
+
+
+def latest_results(state) -> str:
+    runs = state.get("testRuns") or []
+    if not runs:
+        return "No test results came with this message: run your private checks once before you reply."
+    run = runs[-1]
+    if not (run.get("tests") or run.get("hidden")):
+        return "The last browser run collected no tests: run your private checks once before you reply."
+    def tally(rows, label):
+        failed = [row for row in rows if row.get("outcome") == "failed"]
+        passed = sum(row.get("outcome") == "passed" for row in rows)
+        names = ", ".join(str(row.get("label") or row.get("name", "")).split("::")[-1] for row in failed[:8])
+        return f"{label}: {passed} of {len(rows)} passed" + (f"; failing: {names}" if names else "")
+    lines = [tally(run.get("tests") or [], f"Public tests, run in the browser at {str(run.get('at', ''))[11:16]} UTC")]
+    if run.get("hidden"):
+        lines.append(tally(run["hidden"], "Your private checks, same run"))
+    return ". ".join(lines) + "."
 
 
 class Runtime:
@@ -178,6 +251,7 @@ class Runtime:
         self.read_roots: list[str] | None = None
         self.isolation = {"claude": "sandbox" if agents.claude_can_sandbox() else "no-commands", "codex": "sandbox"}
         self.on_event = None
+        self.claude_limits: dict | None = None
         for path in self.root.glob("*/sessions/*/state.json"):
             data = json.loads(path.read_text(encoding="utf-8"))
             if data.get("busy"):
@@ -403,6 +477,82 @@ class Runtime:
                 data["reportError"] = str(error) + " Send a message to ask the interviewer to repair the report."
         return data
 
+    def checks(self, scope, session_id) -> dict:
+        """The examiner's private checks and their labels, for the page to run in the browser."""
+        self.load(scope, session_id)
+        folder = self.directory(scope, session_id) / CHECKS
+        files, total, manifest = [], 0, None
+        if folder.is_dir():
+            for path in sorted(folder.rglob("*.py")):
+                if path.is_symlink() or not path.is_file() or "__pycache__" in path.parts:
+                    continue
+                content = path.read_text(encoding="utf-8", errors="replace")
+                total += len(content)
+                if total > CHECKS_LIMIT:
+                    break
+                files.append({"path": path.relative_to(folder).as_posix(), "content": content})
+            index = folder / "checks.json"
+            if index.is_file():
+                try:
+                    manifest = json.loads(index.read_text(encoding="utf-8"))
+                except ValueError:
+                    manifest = None
+        entries = manifest.get("checks") if isinstance(manifest, dict) else None
+        labels = [{"id": str(item.get("id", ""))[:300], "part": item.get("part") if type(item.get("part")) is int else None,
+                   "label": str(item.get("label", ""))[:160], "note": str(item.get("note", ""))[:400]}
+                  for item in entries or [] if isinstance(item, dict) and item.get("id")][:200]
+        return {"files": files, "checks": labels}
+
+    def rate_limits(self, provider) -> dict | None:
+        """The examiner's plan limits as the agent last reported them; None when unknown."""
+        if provider == "codex":
+            snapshot = self.codex.rate_limits() if self.codex and not self.codex.closed.is_set() else None
+            if not isinstance(snapshot, dict):
+                return None
+            window = lambda item: {"usedPercent": item.get("usedPercent"), "resetsAt": item.get("resetsAt"),
+                                   "minutes": item.get("windowDurationMins")} if isinstance(item, dict) else None
+            return {"fiveHour": window(snapshot.get("primary")), "weekly": window(snapshot.get("secondary")), "plan": snapshot.get("planType")}
+        info = self.claude_limits
+        if not isinstance(info, dict):
+            return None
+        return {"status": info.get("status"), "window": info.get("rateLimitType"), "resetsAt": info.get("resetsAt"),
+                "utilization": info.get("utilization")}
+
+    def budget_low(self, provider) -> bool:
+        limits = self.rate_limits(provider) or {}
+        if provider == "codex":
+            five, week = limits.get("fiveHour") or {}, limits.get("weekly") or {}
+            return (five.get("usedPercent") or 0) >= 75 or (week.get("usedPercent") or 0) >= 90
+        utilization = limits.get("utilization")
+        return limits.get("status") in ("allowed_warning", "rejected") or (isinstance(utilization, (int, float)) and utilization >= 0.75)
+
+    def turn_effort(self, settings, kind, provider) -> str:
+        """Design and marks use the chosen effort. Replies stay at medium, or keep the chosen effort (up to xhigh)
+        in top-firm and reported rounds, one step lower while the plan's window is nearly spent."""
+        chosen = (settings.get("effort") or "").strip()
+        if kind != "reply":
+            return chosen
+        advanced = settings.get("case") == "portals" or settings.get("difficulty") == "stretch"
+        cap = ADVANCED_REPLY_CAP if advanced else REPLY_CAP
+        if self.budget_low(provider):
+            cap = EFFORTS[max(EFFORTS.index("low"), EFFORTS.index(cap) - 1)]
+        base = chosen if chosen in EFFORTS else ("high" if advanced else cap)
+        effort = cap if EFFORTS.index(base) > EFFORTS.index(cap) else base
+        offered = agents.CLAUDE_EFFORTS if provider == "claude" else self.codex_efforts(settings)
+        if offered:
+            allowed = [item for item in offered if item in EFFORTS and EFFORTS.index(item) <= EFFORTS.index(effort)]
+            return max(allowed, key=EFFORTS.index) if allowed else chosen
+        return effort
+
+    def codex_efforts(self, settings) -> list[str] | None:
+        cached = getattr(self, "_codex_models", None)
+        if not cached:
+            return None
+        wanted = (settings.get("model") or "").strip()
+        model = next((item for item in cached[1] if item.get("id") == wanted), None) if wanted else None
+        model = model or next((item for item in cached[1] if item.get("default")), None)
+        return model.get("efforts") if model and model.get("efforts") else None
+
     def sessions(self, scope) -> list[dict]:
         rounds = [self.public(scope, json.loads(path.read_text(encoding="utf-8"))) for path in self.scope_root(scope).glob("sessions/*/state.json")]
         return sorted(rounds, key=lambda item: item["at"], reverse=True)
@@ -445,7 +595,8 @@ class Runtime:
                             "Read history-context.json and session-settings.json. Generate a fresh problem and a verified setup; "
                             "do not select from a catalogue. Use the reported portal case only if settings.case is portals. Create the "
                             "manifest and private reference, verify it, and publish candidate files before asking the opening "
-                            "task. Return the required structured reply. Do not solve candidate work or expose future stages.",
+                            "task. " + CHECKS_RULE + " " + OPENING_RULE + " Return the required structured reply. Do not solve "
+                            "candidate work or expose future stages.",
                             initial=True)
             return self.public(scope, self.load(scope, session_id), True)
 
@@ -483,12 +634,12 @@ class Runtime:
             with self.lock:
                 self.save(scope, state)
 
-        prompt = message if initial else (
-            "Live runtime continuation. Read the current files in workspace/ and .examiner/test-runs.json if present. "
-            "Preserve candidate code; change it only on an explicit assistance request. Continue the fixed case and stage "
-            "from your private manifest. Candidate message:\n\n" + message + "\n\nFor end/debrief write .examiner/report.json "
-            "using the session ID/date in session-settings.json and the scoring and session format references. Return the "
-            "structured runtime reply only.")
+        # What kind of turn this is decides its effort and the steps the page shows while it runs.
+        kind = "prepare" if initial else "mark" if (remark or repairing_report or message.strip().lower() in ("end", "debrief")) else "reply"
+        progress = activity.TurnProgress(kind, state, checkpoint, root=str(directory))
+        checkpoint()
+        effort = self.turn_effort(state["settings"], kind, provider)
+        prompt = message if initial else self.continuation(state, directory, message)
         if repairing_report:
             prompt = ("This round is already over. Repair its missing or invalid .examiner/report.json from the saved evidence, "
                       "without continuing scored work or changing candidate code. Keep finished true. Candidate request:\n\n" + message)
@@ -510,10 +661,12 @@ class Runtime:
                         if self.codex:
                             self.codex.close()
                         self.codex = agents.CodexClient(self.logs, self.root)
-                reply = self.codex.turn(state, directory, prompt, checkpoint, cancelled)
+                reply = self.codex.turn(state, directory, prompt, checkpoint, cancelled, effort=effort,
+                                        watch=lambda item: progress.observe(activity.codex_action(item)))
                 self.isolation["codex"] = self.codex.isolation
             else:
-                reply = self.claude_turn(state, directory, prompt, checkpoint, cancelled)
+                reply = self.claude_turn(state, directory, prompt, checkpoint, cancelled, effort=effort,
+                                         watch=lambda block: progress.observe(activity.claude_action(block)))
             if not isinstance(reply, dict) or any(not isinstance(reply.get(field), str) for field in ("message", "title", "caseFamily", "stage")) or type(reply.get("finished")) is not bool or not isinstance(reply.get("concepts"), list) or any(not isinstance(concept, str) for concept in reply["concepts"]):
                 raise ValueError("The agent did not return a complete interview reply. Your workspace was kept; ask it to continue.")
             for field in ("title", "caseFamily", "concepts", "stage", "finished"):
@@ -528,6 +681,7 @@ class Runtime:
                 state["finished"] = True
             state["messages"].append({"role": "assistant", "text": reply["message"], "at": stamp()})
             state["activity"] = "Round complete" if state["finished"] else "Waiting for your response"
+            self.remember_turn(directory)
             self.event(("Round ready · " + state["title"]) if initial else ("Round complete · " + state["title"]) if state["finished"] else "Interviewer replied")
         except Exception as error:  # Every failure becomes visible state, never a stuck turn.
             state["error"] = str(error)
@@ -535,12 +689,52 @@ class Runtime:
             self.event("Turn stopped · " + str(error)[:160])
         finally:
             with self.lock:
+                progress.finish()
                 state["busy"] = False
                 state.pop("activeTurn", None)
                 self.save(scope, state)
                 self.cancellations.pop(session_id, None)
 
-    def claude_turn(self, state, directory, prompt, checkpoint, cancelled=None) -> dict:
+    def remember_turn(self, directory: Path) -> None:
+        """What the candidate's files were when the examiner last replied, so the next turn sends only the changes."""
+        files = {file["path"]: file["content"] for file in self.candidate_files(directory)}
+        if sum(len(content) for content in files.values()) <= SYNC_LIMIT // 5:
+            write_json(directory / ".examiner" / "after-turn.json", files)
+
+    def changes_since_last_turn(self, directory: Path) -> str:
+        seen_path = directory / ".examiner" / "after-turn.json"
+        try:
+            seen = json.loads(seen_path.read_text(encoding="utf-8")) if seen_path.is_file() else None
+        except ValueError:
+            seen = None
+        if not isinstance(seen, dict):
+            return "Read the current files in workspace/ before you answer."
+        now = {file["path"]: file["content"] for file in self.candidate_files(directory)}
+        changed = sorted(path for path in set(now) | set(seen) if now.get(path) != seen.get(path))
+        if not changed:
+            return "The candidate's files have not changed since your last reply."
+        diff = "".join("".join(difflib.unified_diff(str(seen.get(path, "")).splitlines(True), str(now.get(path, "")).splitlines(True),
+                                                    f"a/workspace/{path}", f"b/workspace/{path}")) for path in changed)
+        if len(diff) > DIFF_LIMIT:
+            return ("Files changed since your last reply (too large to show; read them): "
+                    + ", ".join(f"workspace/{path}" for path in changed) + ".")
+        return "Changes to the candidate's files since your last reply:\n```diff\n" + diff.rstrip() + "\n```"
+
+    def continuation(self, state, directory, message) -> str:
+        parts = ["Live runtime continuation."]
+        minutes = active_minutes(state)
+        if minutes is not None:
+            parts.append(f"Candidate active time so far: {minutes} of {state['settings'].get('minutes', '?')} planned minutes "
+                         "(your working time is not counted).")
+        parts.append(self.changes_since_last_turn(directory))
+        latest = latest_results(state)
+        if latest:
+            parts.append(latest)
+        parts.append("Candidate message:\n\n" + message)
+        parts.append(FAST_RULES)
+        return "\n\n".join(parts)
+
+    def claude_turn(self, state, directory, prompt, checkpoint, cancelled=None, effort=None, watch=None) -> dict:
         if cancelled and cancelled.is_set():
             raise ValueError("The interviewer turn was stopped. Send a message to continue.")
         binary = agents.provider_executable("claude")
@@ -549,7 +743,7 @@ class Runtime:
         sandbox = agents.claude_can_sandbox()
         if sandbox and self.read_roots is None:
             self.read_roots = agents.python_read_roots()
-        command = agents.claude_command(binary, directory, state, sandbox, self.read_roots or [])
+        command = agents.claude_command(binary, directory, state, sandbox, self.read_roots or [], effort=effort)
         log = (directory / ".examiner" / "claude-runtime.log").open("a", encoding="utf-8")
         process = None
         result = None
@@ -567,9 +761,18 @@ class Runtime:
                     event = json.loads(line)
                 except ValueError:
                     continue
-                if event.get("session_id"):
+                if event.get("session_id") and event["session_id"] != state.get("agentSessionId"):
                     state["agentSessionId"] = event["session_id"]
                     checkpoint()
+                if event.get("type") == "assistant" and watch:
+                    for block in (event.get("message") or {}).get("content") or []:
+                        if isinstance(block, dict):
+                            try:
+                                watch(block)
+                            except Exception:  # A progress line must never break the turn.
+                                pass
+                if event.get("type") == "rate_limit_event" and isinstance(event.get("rate_limit_info"), dict):
+                    self.claude_limits = event["rate_limit_info"]
                 if event.get("type") == "result":
                     result = event
             process.wait()
