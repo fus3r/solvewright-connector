@@ -125,3 +125,20 @@ class WorkerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LauncherTests(unittest.TestCase):
+    def test_the_next_command_is_the_one_that_started_this_copy(self):
+        # uvx and pipx run leave no `solvewright` on the PATH, so a plain `solvewright` would not be found next time.
+        cases = [("/Users/a/.cache/uv/archive-v0/x1", None, "uvx", "uvx solvewright"),
+                 ("/Users/a/.local/pipx/.cache/x2", None, "pipx", "pipx run solvewright"),
+                 ("/Users/a/Library/Caches/pipx/x3", None, "pipx", "pipx run solvewright"),
+                 ("/Users/a/.local/pipx/venvs/solvewright", "/Users/a/.local/bin/solvewright", "command", "solvewright"),
+                 ("/Users/a/.local/share/uv/tools/solvewright", "/Users/a/.local/bin/solvewright", "command", "solvewright")]
+        for prefix, found, kind, command in cases:
+            with patch.object(connection.sys, "prefix", prefix), patch.object(connection.shutil, "which", return_value=found):
+                self.assertEqual(connection.launcher(), kind)
+                self.assertEqual(connection.next_command(), command)
+        with patch.object(connection.sys, "prefix", "/usr/local"), patch.object(connection.shutil, "which", return_value=None):
+            self.assertEqual(connection.launcher(), "module")
+            self.assertTrue(connection.next_command().endswith(" -m solvewright"))

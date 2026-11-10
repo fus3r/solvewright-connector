@@ -21,8 +21,10 @@ then `solvewright`. Python 3.10 or newer. The package has no dependencies.
    line for each thing it does (a round prepared, a reply, tests recorded).
 4. Press Ctrl+C to stop. Nothing keeps running in the background, and nothing starts again by itself.
 
-Next time, `solvewright` reconnects without a new code. `solvewright disconnect` removes this
-computer from your account; you can also remove it from Interview Lab, which stops its key at once.
+Next time, run the same command again: it reconnects without a new code, and the terminal reminds you
+which command that is. `uvx` and `pipx run` keep the package in a cache and add no `solvewright`
+command to your shell, so with them, put `uvx` or `pipx run` in front of the commands below (for
+example `uvx solvewright status`). Removing this computer from Interview Lab stops its key at once.
 
 | Command | Does |
 | --- | --- |

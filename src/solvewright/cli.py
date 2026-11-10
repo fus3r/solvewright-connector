@@ -93,7 +93,7 @@ def header(out: Out, config, label: str, described: dict, account: str | None = 
 
 def approve(out: Out, config, service: Service, label: str, open_browser: bool) -> dict:
     described = agents.describe()
-    details = {"connector": __version__, "os": connection.operating_system(),
+    details = {"connector": __version__, "os": connection.operating_system(), "launcher": connection.launcher(),
                "python": ".".join(str(part) for part in sys.version_info[:3]),
                "agents": {name: info["version"] for name, info in described.items() if info["available"]}}
     pending = connection.request(service, label, details)
@@ -133,7 +133,7 @@ def serve(out: Out, config, service: Service, record: dict) -> int:
     out.line()
     out.line("Interview Lab is ready: " + out.bold(f"{config.site_url}/coding/interviews"))
     out.line("Keep this window open while you practise. Closing it stops the connector;")
-    out.line("nothing keeps running in the background.")
+    out.line("nothing keeps running in the background. Next time, run " + out.bold(connection.next_command()) + ": no new code is needed.")
     out.line()
     out.event("Waiting for the Interview Lab")
     if sys.platform == "win32":

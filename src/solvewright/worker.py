@@ -11,7 +11,7 @@ import sys
 import time
 import uuid
 
-from . import __version__, agents
+from . import __version__, agents, connection
 from .service import ServiceError, Unavailable
 
 ROUND = re.compile(r"/sessions/([a-f0-9-]{36})(?:/(message|files|test-runs|interrupt))?")
@@ -96,7 +96,7 @@ def describe_job(path: str, body) -> str | None:
 
 
 def details(runtime) -> dict:
-    return {"connector": __version__, "agents": {name: {"version": info["version"], "isolation": info["isolation"]}
+    return {"connector": __version__, "launcher": connection.launcher(), "agents": {name: {"version": info["version"], "isolation": info["isolation"]}
                                                  for name, info in health(runtime)["agents"].items() if info["available"]}}
 
 

@@ -12,6 +12,7 @@ import json
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -45,6 +46,32 @@ def computer_name() -> str:
     name = re.sub(r"\.(local|lan|home)$", "", name.strip())
     name = re.sub(r"[\x00-\x1f\x7f]", "", name)
     return name[:64] or "This computer"
+
+
+def launcher() -> str:
+    """How this copy was started, so the terminal and Interview Lab can say what to run next time.
+
+    uvx and pipx run keep the package in a cache and put no command on the PATH, which is why
+    a plain `solvewright` would not be found afterwards."""
+    prefix = Path(sys.prefix).as_posix().lower()
+    if "/uv/" in prefix and "/archive-v" in prefix:
+        return "uvx"
+    # `pipx run` keeps throwaway environments in a cache whose place changed between pipx versions;
+    # `pipx install` keeps them under venvs/ and puts the command on the PATH.
+    if "/pipx/" in prefix and "/venvs/" not in prefix:
+        return "pipx"
+    return "command" if shutil.which("solvewright") else "module"
+
+
+def next_command(kind: str | None = None) -> str:
+    kind = kind or launcher()
+    if kind == "uvx":
+        return "uvx solvewright"
+    if kind == "pipx":
+        return "pipx run solvewright"
+    if kind == "command":
+        return "solvewright"
+    return ("py" if sys.platform == "win32" else "python3") + " -m solvewright"
 
 
 def operating_system() -> str:
