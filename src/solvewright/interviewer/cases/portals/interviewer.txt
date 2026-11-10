@@ -1,0 +1,49 @@
+# Portal case — examiner only
+
+Read [reported-round.txt](reported-round.txt) for provenance and uncertainty. Show [brief.txt](brief.txt) at the start of the playable case. Do not present synthetic defaults as recovered historical details.
+
+## Contract and runner
+
+The brief fixes Euclidean walking, free teleportation, bidirectional reusable portals, endpoints within ±1,000,000 per axis, no deletion, current-request-before-travel construction, no retrospective savings, and no future observations. The training generator uses 96 arrivals per episode. The coordinate bound, 24-portal limit and 10-second per-response timeout are practical mock limits, not source facts. Candidate policies receive the horizon in every request.
+
+Keep `tools/portal_lab.py` examiner-only until the candidate has completed sample investigation: its source contains the synthetic distribution. The source generates origins in arrival order along a slowly drifting random walk and destinations around a translated, noisy copy. Both the law and this choice of interpretation are invented. It is an empirical optimization exercise, not an exact recreation. Eight shipped samples use fixed training seeds. For final evaluation, generate new seeds after the candidate freezes the policy. Report every tested episode, not just the best.
+
+Commands, run from the context/interviewer folder:
+
+```sh
+python3 tools/portal_lab.py self-test
+python3 tools/portal_lab.py samples --out data/portal-samples
+python3 tools/portal_lab.py generate --seed 9001 --out ../../.examiner/portal-eval-9001.json
+python3 tools/portal_lab.py score --episode data/portal-samples/sample-01.json
+python3 tools/portal_lab.py run --episode ../../.examiner/portal-eval-9001.json --policy /absolute/path/policy.py
+```
+
+Write generated evaluation episodes under `.examiner/`: the sandbox only allows writes inside the round folder. The policy protocol is newline-delimited JSON over stdin/stdout, one request and one response at a time. Input is `{"step":0,"horizon":96,"origin":[x,y],"destination":[x,y],"portals":[...]}`. Response is `{"build":[{"a":[x,y],"b":[x,y]}]}`; an empty list means no construction. Send debug logs to stderr. The runner launches the candidate Python file as a child, enforces protocol and sequential delivery, and calculates the routes; the child must not open the evaluation episode or generator files. This is a trust-based local protocol, not an adversarial sandbox.
+
+For offline scoring, a plan file is `[{"step":0,"a":[0,0],"b":[10,0]}, ...]`. `score --plan plan.json` replays the build schedule. This checks the objective, not whether the plan was generated without future access. Distinguish it from online policy evaluation.
+
+## Stages (release individually)
+
+**Clarify and baseline.** Ask the candidate to state the objective and what information the decision sees. Offer the no-portal scorer as infrastructure. If the round is specifically about routing, ask for a small correct fixed-network evaluator instead; reduce the later workload accordingly. Do not require both a full routing engine and a strong policy in a short mock.
+
+**Inspect samples.** Ask for the most useful first plot or summary, then let the candidate run it. Reward hypotheses supported by all samples and explicit uncertainty. Do not disclose the walk/copy structure in your questions. The original user already knows the reported walk premise, so record this case as `seen` unless a genuine transfer variant is used.
+
+**One usable policy.** Ask for a baseline placement policy and a measurable comparison against no portals. It need not be sophisticated. Freeze calibration/validation choices before tuning. Ask what evidence would justify a build's one-time cost. Implementation can use the supplied evaluator. Do not optimize on final-test seeds.
+
+**Online defense.** Ask the candidate to explain what happens at a late arrival or after demand changes. The online contract was visible from the start; do not “reveal” it now. Evaluate the cost of decisions at the time they were made.
+
+**One extension if time remains.** Choose one: buffer of four future requests; endpoint restrictions; construction coefficient changes from five to eight; abrupt change of destination regime; traversal charge; build only after the current trip. Disclose it as a new variant and agree on a baseline. Changing timing must also change the evaluator, so do not score an after-travel policy with the bundled before-travel runner.
+
+## Private checking notes / scoped reveal material
+
+For a fixed network of P portals, a complete walking graph over `s`, `t`, and all `2P` portal endpoints, plus zero-cost bidirectional edges for portal pairs, gives exact shortest travel distance. Dijkstra is enough. Comparing only “direct” and “one portal” is wrong when chains are allowed. Geometry can cross; there are no walls. The supplied evaluator recomputes this small graph per trip.
+
+With a single proposed portal of length L, a necessary aggregate benefit condition over the chosen trips is travel savings greater than `5L`; measure marginal savings against the existing network, not against direct walking, to avoid counting the same benefit twice. This is an offline benefit calculation, not by itself an online optimality proof. A policy may estimate future demand from training episodes or a recent window, but its assumptions and risk must be explicit. At the final request, no benefit can exceed L for a new portal of length L under these rules, so the factor-five construction charge cannot pay for itself on that request alone.
+
+Accept reasonable heuristics: representative endpoint pairs from recent requests, clustered demand, periodically evaluated builds, or another defensible scheme. The point is executable decisions and honest evaluation. Do not require the candidate to reproduce a preferred algorithm or infer the exact random generator.
+
+Hints, if requested, in order: (1) “What would the bill be with no construction?” (2) “Which part of the bill is paid once, and which is paid for each trip?” (3) a tiny repeated-request counterexample to per-nomad construction; (4) a marginal-savings equation or partial policy. Reveal only the obstacle requested.
+
+Score model quality and measured cost separately. Include no-portal cost, construction cost, travel cost, number of builds, and percent savings, which can be negative. Average across all held-out episodes. An offline comparator is a reference, not a known global optimum, unless proven.
+
+For an unseen transfer, change the mechanism materially: a one-way shortcut with a per-use toll, an online facility with maintenance, or a request buffer with a build delay. Update all relevant contract fields and evaluation; use a different case ID and mark `transfer`. Merely rotating the same points is `seen` practice.

@@ -1,0 +1,13 @@
+# Reusable portals — candidate brief
+
+This is a synthetic practice case inspired by a reported round at a quant firm (HRT or Jane Street). Its exact rules and datasets are invented for training.
+
+Nomads arrive with an origin and destination on a 2D plane. Walking a unit of Euclidean distance costs $1. You may construct reusable bidirectional portals. Constructing a portal from `a` to `b` costs `5 * distance(a, b)` once; traversing it is free.
+
+At each step you see the current origin–destination request and all earlier requests. Before that nomad travels, you may add zero or more portals whose endpoints are finite 2D coordinates within ±1,000,000 on each axis (a practical runner limit). Existing portals persist for the rest of the episode. You cannot move or remove them. A nomad takes the shortest route through any combination of walking and the portals built so far. Each trip is charged once at its arrival; later construction does not change an earlier trip's bill.
+
+Minimize the sum of construction and travel costs over the episode. The horizon is known. You do not see future evaluation requests. Eight complete **synthetic training episodes** are available in `data/portal-samples/`; you may inspect and plot them. Fresh evaluation episodes follow this mock's generator, not a claimed reconstruction of HRT's generator.
+
+For practical evaluation, the runner limits an episode to 24 portals and gives a submitted policy 10 seconds to answer each request on the local machine. The scorer and stream runner are provided; you are not required to implement the routing evaluator unless that is the selected task. Python's standard library is enough for a policy; exploration tools are optional.
+
+Begin by explaining what you would establish and implement before optimizing placement. There is no requirement to prove a globally optimal online policy.

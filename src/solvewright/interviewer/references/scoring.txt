@@ -1,0 +1,66 @@
+# Scoring and adaptation
+
+Examiner reference. Read before running or assessing a round.
+
+## Seven dimensions
+
+| ID | Dimension | Observable evidence |
+| --- | --- | --- |
+| clarification | Requirements | Finds consequential ambiguities; states objective, input contract and decision timing. |
+| modeling | Modeling and reasoning | Forms a useful abstraction, baseline, assumptions, cost model or statistical hypothesis. |
+| implementation | Implementation | Produces working core behavior with a coherent state model and suitable complexity. |
+| validation | Validation | Chooses discriminating tests/experiments, separates evidence from assumption, avoids temporal leakage. |
+| adaptation | Adaptation | Revises the design or hypothesis when a requirement or measured result changes. |
+| communication | Communication | Explains choices and limitations precisely, responds to objections, uses time well. |
+| tools | Tool and AI judgment | Uses data/code tools productively, inspects generated output, and owns the resulting claims. |
+
+Rubric values apply to observed work under the stated assistance:
+
+- **0:** attempted, but no usable progress or fundamentally incorrect behavior remains.
+- **1:** fragmented progress; substantial errors or heavy support remain.
+- **2:** partially correct core; material omissions, validation gaps or support needed.
+- **3:** correct, appropriately scoped core, tested or convincingly checked, with a defensible explanation.
+- **4:** strong core plus successful defense or transfer to a meaningful variation. More abstractions do not earn more points.
+- **null:** not observed. Never convert missing evidence into a failure or a success.
+
+Each observed score needs a short piece of evidence: what the candidate said, built, tested or failed. Record `assistance`: `none`, `hint`, `revealed`, or `ai`. Use the strongest assistance that materially affected the evidence for that dimension. A clarification answer about the rules is not a hint. A revealed testing syntax example need not contaminate an independently derived model; a revealed algorithm does affect implementation of that algorithm. If ambiguous, explain the uncertainty and use the more cautious assistance label.
+
+## Summary score and coverage
+
+Weights, in dimension order above:
+
+| Track | Requirements | Modeling | Code | Validation | Adaptation | Communication | Tools |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| hybrid | 15 | 20 | 20 | 15 | 15 | 10 | 5 |
+| research | 10 | 25 | 15 | 25 | 10 | 10 | 5 |
+| trading | 15 | 25 | 15 | 20 | 10 | 10 | 5 |
+| systems | 15 | 15 | 25 | 15 | 15 | 10 | 5 |
+
+For observed dimensions O, compute `round(100 * sum(weight[d] * score[d]) / (4 * sum(weight[d])))`. Coverage is `sum(weight[d] for observed d)` out of 100. With zero coverage, the score is unavailable. Always show coverage and how many observed dimensions used assistance. A drill with two observed dimensions is not equivalent to a complete mock with the same score. The app computes this score; do not encode an independent total that can disagree with it.
+
+Record whether assessment used executed tests, inspection, a hand-trace, or discussion. An excellent explanation can be observed; it is not proof that code ran. Do not award a top implementation score based only on pseudocode when executable code was required.
+
+Before claiming a missing test or an undetected regression, inspect both the provided suite and the candidate's added checks. Name the exact behavior and verify whether the existing tests already detect it. Distinguish “the candidate did not independently design this check” from “the suite does not cover it.” Do not invent a weakness just to fill a gaps section; an empty gaps list is preferable to a false criticism. A debrief observation should point to an actual response, code path, named test, or measured result.
+
+Do not define HRT or Jane Street pass marks. Do not estimate hiring probability, percentile, Elo or IQ. Rubric scores are local training feedback. Compare similar tracks, case difficulty, coverage and help conditions; use individual dimensions for broader diagnosis.
+
+## Infer a level conservatively
+
+Per dimension, consider up to the **five most recent eligible observations in the last 90 days**. Eligible means a completed or time-limited attempt, score observed, assistance `none`, and novelty `unseen` or `transfer`. A known-case replay and immediate retest of a revealed idea are learning evidence, not new independent assessment.
+
+Use the median score as the provisional level on the same 0–4 rubric. Label reliability:
+
+- no eligible observation: **not measured**;
+- one or two, or only one case family: **provisional**;
+- at least three across at least two case families: **supported by repeated practice**.
+
+This is a descriptive heuristic, not a psychometric model. Keep evidence counts and case variety visible. Old observations can remain in history while dropping out of current-level inference. Do not collapse seven dimensions into a confident global candidate level.
+
+For a next session, first target the lowest supported/provisional dimension; break ties with fewer observations, then choose a fresh case family if possible. If no dimension has eligible evidence, recommend a broad mock or a short diagnostic. If several dimensions are unmeasured, mention the assessment gap alongside the proposed weakness drill. If independent performance improved, verify it in another family before raising confidence.
+
+Suggested drills: requirements → online/offline contract; modeling → baseline and break-even; implementation → small state machine; validation → adversarial trace/temporal split; adaptation → one new requirement; communication → explain and defend a minimal design; tools → inspect a plot or audit an AI patch. A drill must still produce observable work, not just a lecture.
+
+## Verdict
+
+End every scored report with a `verdict`: one plain line against the bar for this round's track and difficulty, for example "Below the bar for a standard mock" or "Meets the bar for a foundation drill", and `meetsBar` true or false. Use `null` for `meetsBar` only when coverage is too low to say, and say so in the label. Be as strict as a real interviewer: a working core reached only after a reveal does not meet the bar, and generous marks for unobserved work are not allowed. Write the label from the marks you gave, never the reverse.
+

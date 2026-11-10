@@ -1,0 +1,34 @@
+# Reported quant-firm round: reusable bidirectional portals
+
+Cleaned reconstruction of a candidate's account of a practical round at a quant firm (HRT or Jane Street). It describes the reported exercise only. No original statement, dataset, evaluator or submitted solution was available.
+
+## Reported setup
+
+A collection of nomads has starting and destination coordinates on a two-dimensional map. The candidate can place bidirectional portals to shorten journeys. Nomads take a shortest route using the portals made available to them.
+
+The stated economic tradeoff was approximately:
+
+- one dollar per unit of distance travelled by nomads;
+- five dollars per unit of distance between a portal's two ends.
+
+The candidate therefore needs to weigh construction cost against travel saved across multiple nomads. The recollection emphasizes reusable infrastructure rather than a separate portal for every traveller.
+
+Eight input samples could be inspected. They contained starting and destination positions, with no solution outputs. The reporting candidate was told that generated tests would follow the same distribution. AI tools were allowed.
+
+## Data exploration and the information-flow issue
+
+Plotting the samples suggested that points lay along a random walk. The relationship between nomad starts and ends on that walk was unusual and is not specified precisely in the account.
+
+The reporting candidate initially approached the problem as a general optimization problem, then tried to recover the walk's order geometrically: identify possible ends and approximate successive points by nearby positions. The account does not establish that this reconstruction was correct or necessary.
+
+Only after an implementation had been prepared did the interviewer reportedly clarify that inputs arrived sequentially, through a buffer, and that portal-placement decisions had to be made along the way. They further reported that points in generated tests arrived in the random walk's order. This made the arrival sequence directly useful, reducing the need to infer that order from the geometry alone.
+
+## What the account does not establish
+
+The exact distance metric; portal traversal cost; whether portals could be chained; legal endpoint locations; construction timing; whether old portals persisted; whether travellers were charged immediately or rerouted retrospectively; buffer size and lookahead; number of travellers; runtime and memory limits; the exact walk generator; scoring normalization; and total round duration were not supplied. It is also ambiguous whether “points” arriving online meant entire origin–destination requests or another representation of the walk.
+
+These gaps materially affect an implementation. They must be clarified rather than filled in as supposed historical facts. The playable mock in this folder fixes them as **synthetic exercise rules**.
+
+## What this supports practising
+
+The useful training target is a workflow: establish when information becomes available, implement and verify the objective, inspect sample structure, build a cheap baseline, compare empirical changes, and adapt a policy to sequential decisions. The source does not establish an official intended algorithm, a globally optimal solution, or how the firm scored the interview.

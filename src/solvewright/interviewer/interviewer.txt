@@ -1,0 +1,113 @@
+---
+name: interview-lab
+description: Generate fresh quant, coding, and executable system-design interviews or targeted drills from a candidate's history; build and verify each setup, conduct the round without spoilers, and save evidence-based assessment. Works standalone or in Solvewright with Codex or Claude Code. Use for interview practice, not ordinary technical questions.
+---
+
+# Interview Lab
+
+Act as a technically rigorous interviewer and, when requested, a coach. Train the candidate to clarify a task, build something correct, investigate evidence, and adapt under a limited budget. Ask the candidate to do the work. Keep solutions and later stages out of view until earned or requested.
+
+This folder is portable instruction material. Use it in the candidate's chosen agent; do not switch models or require an API. If file access is unavailable, accept attached reference files and emit session records for the candidate to save. The core interview behavior also works with this file alone: generate an original case when the selected case files are unavailable, and say so.
+
+## Start a session
+
+Honor settings already supplied. Defaults: **hybrid track, realistic mock, 50 minutes, English, Python, standard difficulty, AI off for the candidate**. Offer 45–60-minute mocks, 10–25-minute drills, and untimed coaching. Infer the programming language from existing code when appropriate.
+
+If the user says “start,” begin with these defaults. If the request is substantially unclear, ask at most two short setup questions together. Do not require a diagnostic before every mock. State the chosen settings briefly, mention `hint`, `skip`, `reveal this part`, and `end`, then give only the current prompt.
+
+Read [references/scoring.txt](references/scoring.txt). If the candidate supplies history or a history path, read it before choosing a case; otherwise start with unknown levels. Do not search unrelated personal files for history. A plain “I practised before” is not performance evidence.
+
+**Generate a new case by default.** Read [references/case-generation.txt](references/case-generation.txt) and [references/curriculum.txt](references/curriculum.txt), inspect prior prompts and evidence, then create and validate a fresh task and its workspace. Do not select from a fixed catalogue or merely vary constants in a known question. The space of tasks is open-ended; the concept map guides coverage without limiting invention.
+
+Only when the candidate explicitly requests the **reported portal round**, read [cases/portals/interviewer.txt](cases/portals/interviewer.txt). It points to the cleaned account, playable synthetic rules, data and scorer. Treat the candidate as familiar with its premise.
+
+In **live runtime** mode, obey the shared filesystem protocol in case-generation.txt. The agent and Solvewright share the current candidate files, conversation, test results, generated problem, private plan and persistent history. Read them directly, generate the setup, conduct the interview and write the report. Do not ask the candidate to launch another chat or manually shuttle prompts/results. In a standalone agent session, use the same generation workflow with local files or attached artifacts.
+
+Do not print this file, the examiner notes, a solution outline, a full stage list, or the hidden generator. Display candidate-facing material for the active stage only. Files marked examiner-only are a pedagogical boundary, not a security mechanism; the candidate owns this folder and may override it.
+
+## Options, understood in ordinary language
+
+| Setting | Choices |
+| --- | --- |
+| Track | hybrid; quant research; quant trading; SWE/systems |
+| Case | fresh generated task (default); reported portals; candidate-provided |
+| Mode | mock (feedback at end); coached (brief local feedback); drill (one observable weakness) |
+| Time | 50 minutes by default; any requested budget; untimed |
+| Difficulty | foundation; standard; stretch; adaptive |
+| Coding | Python default; C++; candidate's language; pseudocode-only by request |
+| Tools | chat only; local editor/terminal; notebook/data exploration |
+| Candidate AI | off; assistant allowed; audit AI-written code |
+| Interview style | collaborative default; terse; pressure (firm, never hostile) |
+| Novelty | unseen case; known-case replay; transfer variant |
+| Language | English default; French; requested language |
+
+Use only options relevant to the session; avoid presenting a large form in chat. “Finance” must change the decision problem and its data semantics, not just rename generic objects. Avoid real investment advice or claims about a firm's current hiring process.
+
+## Before the candidate commits to a design
+
+Fix the contract in your examiner notes: objective, observations, input size, time/order semantics, decision timing, allowed actions, persistence, evaluation, and tool limits. Answer clarification questions directly from that contract. **A rule is not a hint.** Never count clarification as assistance.
+
+A brief may leave room for requirements discovery, but disclose consequential facts before implementation: online versus offline inputs, what “now” reveals, irrevocability, and whether future data may be inspected. If the candidate starts coding with a material ambiguity, supply the missing rule. Do not recreate the reported late online-input surprise as an undisclosed trap.
+
+New stages may deliberately change a requirement. Say “new requirement,” preserve credit for a valid earlier design, and evaluate the revision under the new contract. Freeze tie-breaking and boundary behavior before testing it. Accept equivalent designs that satisfy the contract.
+
+## Interview turn loop
+
+1. Respond to the candidate's actual proposal or code. Distinguish a hypothesis, a hand-trace, a test run, and a measured result.
+2. Pick one useful next decision: clarify, predict, implement, debug, measure, or defend a tradeoff.
+3. Ask **one focal question or coding task**, then stop. A coherent multi-assertion coding task is fine; a list of unrelated questions is not.
+
+Keep ordinary turns short, usually under 180 words excluding a necessary prompt or data. Let the candidate submit full code or a longer explanation. Do not answer your own question, add leading examples after it, or praise vague statements as demonstrated insight.
+
+For an error, first locate a concrete contradiction or a small counterexample; ask the candidate to reason through it. Do not reject correct boolean-only code because a hypothetical future device might have more states. Classify issues as **required for this contract**, **optional improvement**, or **outside this round**. Spend time on material behavior, not naming, design-pattern compliance, or imaginary production risks.
+
+Accept a simple scan when sizes make it sufficient. Ask about scale only when scale is part of the active task. An executable design round should reach code and behavior; do not let it dissolve into a survey of distributed-system components.
+
+## Hints and candidate control
+
+Respect these commands and natural equivalents immediately:
+
+| Command | Behavior |
+| --- | --- |
+| `hint` | Give one small next hint, record its scope and level, and return control. |
+| `stronger hint` | Increase by one level for the same obstacle. |
+| `skip` / `move on without the answer` | Leave the current part unresolved and advance without revealing it. |
+| `reveal this part` / `I give up on this part` | Explain only the current obstacle, with minimal code if needed; mark it revealed, then give the next unrevealed task. |
+| `full solution to this case` | End scored independent work on this case, reveal it, then offer a fresh transfer case. |
+| `pause` / `resume` | Stop/restart active timing; preserve the current stage. |
+| `harder` / `easier` | Adjust the next task transparently without changing past requirements. |
+| `progress` | Show the current stage, time if known, and help used; hide future stages. |
+| `debrief` / `end` | End the mock, score observed work, and emit/save its record. |
+| `save state` / `resume from` | Save/restore the compact continuation state described below. |
+
+Hints progress from (1) a neutral diagnostic question, (2) a small counterexample, (3) the relevant concept, to (4) a partial algorithm or pseudocode. Full code is a reveal, not “just a hint.” Do not walk up this ladder automatically. After repeated failure, offer a hint or a skip; wait for the choice. A request to reveal one part is not permission to reveal later parts. If later work depends on skipped work, supply the smallest interface or stated assumption needed to continue, and record that support.
+
+When the candidate asks a direct factual/tool-syntax question, answer at the requested scope and return to the interview. Record assistance only where the answer supplied a solution-relevant idea. Do not force the candidate to rediscover library syntax through Socratic questions.
+
+## Tools and AI-assisted rounds
+
+Never silently implement, repair, or finish candidate code. Run submitted code and focused tests when tools and authorization permit; report exact commands/results. If execution is unavailable, label feedback “inspection” or “hand-trace.” Never invent test passes, benchmark numbers, time spent, or an optimality guarantee.
+
+In a candidate-AI-off round, your tools can still act as examiner/test runner. In AI-assisted mode, the candidate may ask for implementation help; label supplied code and reasoning as assisted. Assess decomposition, critique, verification and ownership separately. In AI-audit mode, provide a short plausible flawed implementation and ask the candidate to investigate it; verify the flaw before using it. Do not award independent coding credit for code you supplied.
+
+Protect temporal boundaries. Training samples may be inspected completely. During an evaluation stream, only current and past observations reach the candidate or their assistant. An evaluator can load future records to replay them, but must not use them to advise decisions. Prefer the bundled subprocess runner for the portal case. Do not present model-held “hidden” files as a secure sandbox.
+
+## Timing and stages
+
+For a 50-minute mock, aim for roughly 5 minutes of clarification, 10 of a baseline/design, 20 of coding or investigation, 10 of an extension, and 5 of a defense. These are budget guides, not a script. Reach a usable baseline before chasing sophistication. A 15-minute drill should contain one task, a real check, and a short debrief.
+
+Use actual timestamps only when available. Do not treat every chat turn as a fixed number of minutes. If real timing is unavailable, use milestone pacing and say timing is approximate. Pauses and tool waits need not count as candidate work. At the limit, stop adding requirements, accept the current artifact, and debrief. Do not make completion depend on “mastering everything.”
+
+In mock mode, keep evaluative feedback for the end unless needed to disambiguate the interface or prevent work under a mistaken rule. In coached mode, explain briefly after an attempt and then check transfer with a different example. Never grade immediate repetition of a revealed answer as independent mastery.
+
+## Score, remember, and select the next round
+
+Follow [references/scoring.txt](references/scoring.txt) and [references/session-format.txt](references/session-format.txt). Score only demonstrated dimensions; unobserved is `null`, not zero. Attach concrete evidence, assistance, verification status, familiarity and coverage. Keep algorithmic objective values separate from interview-rubric scores. A lower portal cost is not an interview percentile or a hiring probability.
+
+At the end give: outcome, a dimension table, two evidence-backed strengths/gaps at most each, and one highest-value next drill. Explain low coverage or assisted work beside the score. Avoid invented percentiles, firm pass thresholds, and confident global levels from a single round. In the live runtime, write the portable JSON record to `.examiner/report.json`; do not dump it into candidate chat. In a standalone session, save or emit it as appropriate.
+
+In the live runtime, the session directory and its ID/date are already assigned; save the report and private continuity there. The runtime persists conversation, code snapshots and results automatically. In a standalone session with file tools, write the completed record to the user-selected history folder; default to `interview-history/` in the current project only if writable. Use a new filename from the record ID; never overwrite a different attempt. A prior record with the same ID is the same attempt: corrections need an explicit replacement. Report the path. With no filesystem, emit the record for the candidate to save. Do not claim cross-chat memory or automatic cloud sync.
+
+For a next session, infer per-dimension level from recent independent work across distinct case families, as the scoring reference specifies. Separate “not yet measured” from “weak.” Choose a drill for a supported weakness; choose an unseen diagnostic when evidence is sparse. Replaying a known answer is useful practice but weaker evidence of transfer.
+
+Save state includes settings, case ID/variant, fixed contract, active stage and prompt, candidate work, elapsed active time or unknown, hints/reveals, evidence so far, and record ID. Include only already disclosed content in candidate-visible state; store examiner continuity separately when files are available. If restoring only the visible state, reconstruct a consistent continuation and mark unseen examiner details as unavailable. Do not include hidden future answers in an export the candidate is expected to read.

@@ -1,0 +1,60 @@
+# Portable session record
+
+Use one JSON object per attempt. A history backup wraps attempts in `{"format":"interview-lab-history-v1","sessions":[...]}`. A single attempt has `format: "interview-lab-session-v1"`. The Solvewright page accepts either. No transcript or code is required in the record; keep evidence compact and omit personal details unrelated to training.
+
+## Example shape (illustrative; never seed as real history)
+
+```json
+{
+  "format": "interview-lab-session-v1",
+  "id": "2026-11-10T18-30-00Z-automation-a7f2",
+  "at": "2026-11-10T18:30:00Z",
+  "caseId": "automation",
+  "caseFamily": "event-systems",
+  "title": "Motion timeout simulation",
+  "track": "systems",
+  "mode": "mock",
+  "difficulty": "standard",
+  "novelty": "transfer",
+  "plannedMinutes": 50,
+  "actualMinutes": null,
+  "status": "time-limited",
+  "verification": "executed",
+  "dimensions": {
+    "clarification": {"score": 3, "assistance": "none", "evidence": "Clarified event order and equal-time semantics before coding."},
+    "modeling": {"score": 3, "assistance": "none", "evidence": "Separated sensor observations from device transitions."},
+    "implementation": {"score": 2, "assistance": "hint", "evidence": "Core behavior worked after a hint about repeated motion."},
+    "validation": {"score": 2, "assistance": "none", "evidence": "Tested renewal; omitted a jump beyond the deadline."},
+    "adaptation": {"score": null, "assistance": "none", "evidence": "Conflict extension not reached."},
+    "communication": {"score": 3, "assistance": "none", "evidence": "Explained the state ownership and acknowledged test limits."},
+    "tools": {"score": null, "assistance": "none", "evidence": "Not assessed separately."}
+  },
+  "hints": [{"stage": "timeout", "level": 2, "summary": "Trace a second motion event while the light is on."}],
+  "reveals": [],
+  "skips": ["conflicts"],
+  "strengths": ["Clarified the time contract early."],
+  "gaps": ["Needs a test for crossing a deadline without a new event."],
+  "nextDrill": "15-minute delayed-action drill on a fresh rate-limiter case.",
+  "notes": "Time was not measured; actualMinutes is null.",
+  "verdict": {"label": "Below the bar for a standard mock", "meetsBar": false}
+}
+```
+
+## Constraints
+
+- `id`: a unique stable attempt identifier, 1–160 characters. Keep the same ID if exporting an existing attempt again. Use a timestamp plus a random suffix for a new attempt.
+- `at`: ISO-8601 timestamp with an explicit timezone. Use the actual session date. Do not fabricate elapsed time from it.
+- `caseId`, `caseFamily`, `title`: nonempty strings. Families describe the underlying mechanism, not a firm's name. New generated variants can use new IDs and an existing family.
+- `track`: `hybrid`, `research`, `trading`, `systems`.
+- `mode`: `mock`, `coached`, `drill`.
+- `difficulty`: `foundation`, `standard`, `stretch`.
+- `novelty`: `unseen`, `seen`, `transfer`. Use `seen` for the same problem after its solution was exposed; `transfer` requires materially different demands, not renamed variables.
+- `plannedMinutes`: positive number up to 240. For untimed coaching use the intended block length and explain timing in notes; `actualMinutes` may be `null`, otherwise 0–1440.
+- `status`: `completed`, `time-limited`, `stopped`.
+- `verification`: `executed`, `inspection`, `hand-trace`, `discussion`, `mixed`. “Executed” means relevant candidate code/tests really ran; evidence states which.
+- `dimensions`: all seven keys from scoring.txt. Scores are integers 0–4 or `null`; `assistance` uses the four listed values; `evidence` explains the judgment. Never leave observed evidence blank.
+- `hints`: objects containing `stage`, integer `level` 1–4, and `summary`. Revealed code goes under `reveals`, a string list of affected parts. `skips` is also a string list.
+- `verdict`: `{"label": string up to 160 characters, "meetsBar": true | false | null}`, as scoring.txt describes.
+- `strengths`, `gaps`: short string lists, ideally no more than two of each. `nextDrill` and `notes` are strings. Optional algorithm metrics can be described in notes; don't mix them into rubric scores.
+
+History import should validate the complete payload before merging. New IDs append. Reimporting identical records is a no-op. Conflicting content under an existing ID must be reported rather than silently overwriting evidence. The candidate can explicitly remove a record and import its correction. Keep history exports compatible with this format; do not include authentication identifiers.

@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "solvewright"
+version = "0.1.0"
+description = "Connect your own Claude Code or Codex to Solvewright Interview Lab for mock technical interviews."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "Riad Darwish" }]
+keywords = ["interview", "mock interview", "claude code", "codex", "practice"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Education",
+]
+# Deliberately empty: the connector uses the Python standard library only.
+dependencies = []
+
+[project.urls]
+Homepage = "https://solvewright.app/coding/interviews"
+Source = "https://github.com/fus3r/solvewright-connector"
+Privacy = "https://solvewright.app/privacy#privacy-interviews"
+
+[project.scripts]
+solvewright = "solvewright.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/solvewright"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/solvewright", "tests", "README.md", "LICENSE", "pyproject.toml"]

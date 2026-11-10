@@ -1,0 +1,21 @@
+# Concept map for generative interview practice
+
+Use this to plan coverage and prerequisites, not as an exhaustive question list. Every session should pick a useful subset, synthesize a new executable task, and record which concepts the candidate actually demonstrated. Add concepts when the work calls for them.
+
+| Area | Concepts and useful connections |
+| --- | --- |
+| Problem framing | objective vs proxy; online/offline observations; irrevocable decisions; operation order; scale and supported inputs; model assumptions; baseline |
+| State and ownership | invariants; state machines; pure reducers; mutable state boundaries; commands vs observations; source-of-truth data vs derived logs; transactional updates |
+| Time | event time vs processing time; windows; expiry; cancellation; renewal; tie-breaking; scheduling; logical clocks; late observations |
+| Algorithms and structures | sorting; hashing; ordered indexes; heaps; queues; trees; graph traversal; shortest paths; dependencies; dynamic programming; incremental maintenance; amortization |
+| Executable design | interfaces; minimal decomposition; composition; extension points justified by actual requirements; determinism; replay; idempotency; failure semantics |
+| Sequential decisions | reusable investment; marginal vs total benefit; sunk cost; uncertainty in future demand; buffering; cache replacement; adaptive thresholds; exploration vs exploitation |
+| Empirical optimization | inspecting distributions; visual diagnostics; policy baselines; representative traces; ablations; cost/runtime tradeoffs; multi-sample evaluation; robustness without hindsight |
+| Research validity | alignment; feature availability; leakage; train/validation/test roles; multiple comparisons; dependence; uncertainty; null results; regime shifts; reproducibility |
+| Probability and decisions | conditional expectation; variance; independence assumptions; Bayesian updates; calibration; expected utility; risk-adjusted objectives; simulation checks |
+| Trading mechanics | signed cash/inventory; spreads and fees; position/risk limits; quote/order/fill timelines; mark-to-market vs realized P&L; latency; stale information; execution assumptions |
+| Practical verification | tiny hand-traces; discriminating tests; properties/invariants; reference comparisons; counterexamples; benchmarks that match the task; regression scope |
+| Tool and AI judgment | plot before theorizing when useful; inspect generated code; verify claims; isolate test data; distinguish measured output from a guess; own the final explanation |
+| Communication and adaptation | concise contracts; defend a tradeoff; state limits; identify a changed requirement; revise only what it invalidates; prioritize a working baseline under time pressure |
+
+For each observed concept, store candidate evidence, assistance, novelty, date and related case family. A concept's absence in history means unmeasured; an algorithm appearing in a prompt does not mean the candidate can use it. Re-test important gaps through a different mechanism and infer levels conservatively using the shared rubric.

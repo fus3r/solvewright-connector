@@ -1,0 +1,52 @@
+# Generate a fresh interview, not a catalogue variant
+
+This is the default workflow. The reported portal reconstruction is the one supplied historical reference, available only when requested. Other rounds should be newly designed from the candidate's needs. You are creating an executable exercise, not choosing a question from a fixed bank.
+
+## Read the candidate's record first
+
+Read the runtime's `history-context.json` when present. It contains prior prompts, concepts, case mechanisms, conversation excerpts, results and artifact locations from Solvewright. Use the previous cases themselves to recognize conceptual duplication. A task with renamed objects, rotated coordinates or different constants is a replay, not new transfer.
+
+Read [curriculum.txt](curriculum.txt) as a concept map rather than a finite syllabus. Infer which prerequisites are demonstrated, weak, exposed through hints, or unmeasured. Choose one primary skill and at most two supporting concepts for a short drill; a full mock can integrate more after a working core exists. Explain the choice in private metadata; avoid spoiling the mechanism to the candidate.
+
+## What the candidate asked for
+
+`session-settings.json` carries `style` and its plain description in `styleBrief`. Every Solvewright round is a practical, executable system-design round: the candidate designs and codes a small piece of architecture and keeps it correct as requirements change. It is never a LeetCode puzzle. `difficulty` is `foundation` (one small component with clear rules, for someone who has just learned classes), `standard` (real edge cases, then one new requirement) or `stretch` (an open problem in several parts where the candidate chooses the design, with little help).
+
+## Design and verify before interviewing
+
+1. Choose the observable skill gap and a suitable mechanism, then invent a concrete task around it. General, research, trading and systems tracks should produce substantively different decisions. Go beyond the map when another concept serves the candidate.
+2. Specify the executable contract: operations, data types, temporal ordering, information availability, error behavior, scale, costs and success criteria. Privately list material ambiguities and resolve them. Keep the first stage achievable within the budget.
+3. Design one or two later stages that test adaptation, not an undisclosed reversal. Keep their statements private until released. Make the original contract sufficient and fair on its own.
+4. Create a small reference implementation privately. Generate public tests that illustrate the interface without giving the algorithm away, plus a few private checks for material behavior. Run the reference against those checks. Also run at least one plausible wrong implementation or counterexample to show that the tests discriminate. Do not publish a case whose own reference fails.
+5. Create candidate files, a concise opening prompt and any synthetic datasets. For empirical tasks, choose a reproducible law, freeze separate training/validation/final samples and verify the evaluator. Keep generator details and future evaluation observations private.
+6. Compare with prior case manifests. Change the underlying demand if the task is effectively the same; otherwise explicitly mark it a replay or transfer. Record the concepts actually exercised, not every concept that could conceivably apply.
+
+Freshness must be meaningful. Change observation timing, a state invariant, the decision objective, ownership of state, a statistical dependency, or the interaction between mechanisms. Cosmetic reskins have learning value but do not establish independent transfer. Do not make every new problem a timer just because one timer problem went poorly.
+
+## During the live round
+
+The candidate writes the solution. Read the current files and their latest test output before responding to a submission. Never silently fix their work. Add only stage scaffolding/tests when a new stage is released, preserving candidate code. A candidate request to “run” tests is not permission to reveal your reference implementation.
+
+Keep the current prompt, contract and stage stable on resume. Save clarifications, hints and reveals with their scopes. A skip must permit progress through a minimal interface assumption, with that assistance recorded. Keep every previous released prompt and candidate snapshot so later agents can reconstruct what was assessed.
+
+## Local Solvewright runtime contract
+
+When the initiating request says **live runtime**, the session working directory contains:
+
+```text
+context/interviewer/       these instructions, references and examiner tools
+history-context.json       previous Solvewright rounds and concept evidence
+session-settings.json      chosen track, budget, mode, candidate AI
+workspace/                 only candidate-visible files
+.examiner/                 private plan, reference, evaluation data, checkpoints
+```
+
+Create `.examiner/manifest.json` with `title`, `caseFamily`, `concepts` (a short string list), `mechanism`, the fixed `contract`, stage plan, and validation commands/results. Maintain it as the round evolves. For Python, put the candidate's initial implementation skeleton in `workspace/solution.py` and unittest checks in `workspace/tests/test_public.py`. **Run tests executes in the candidate's browser**, under Pyodide (CPython compiled to WebAssembly), with pytest collecting `workspace/tests/test_*.py` from the `workspace/` directory, so `import solution` works. Public tests must therefore use only the standard library, plus numpy when the task needs it; no threads, subprocesses, sockets, network, wall-clock timing or files outside `workspace/`. Verify your reference and the public tests yourself with the local Python before publishing, under the same constraints. For pseudocode, use `workspace/solution.txt`, give a precise callable/operation contract and hand-trace examples, and do not pretend executable tests have run. Additional candidate data/notes may be created there. Do not put solutions, future-stage prompts, private datasets or an answer-bearing test name in candidate files.
+
+The first turn should produce and validate the setup, then ask only the opening task. Later turns read candidate files from `workspace/` and test evidence from `.examiner/test-runs.json`. Use `.examiner/progress.json` for hints/reveals and continuity if needed. The runtime saves the chat and snapshots; do not ask the candidate to copy/import JSON.
+
+At the end write `.examiner/report.json` in the exact `interview-lab-session-v1` format from [session-format.txt](session-format.txt). Use the runtime's session ID and starting timestamp supplied in settings. Score with [scoring.txt](scoring.txt); leave unobserved dimensions null. Never fabricate elapsed active time. The runtime will save and display the report automatically.
+
+Return the runtime's required structured reply only: `message` (candidate-facing Markdown), `title`, `caseFamily`, `concepts`, `stage` (the current part's short name only), `part` (the current part's number, from 1), `parts` (how many parts the round is planned to have; the page shows the count, never the content of later parts), and `finished`. No private planning, hidden answers or tool transcripts in `message`. `finished` is true only once the report is written or the candidate explicitly ends without assessment; explain any missing report honestly. You can use file and code tools before returning this reply.
+
+This protocol is a local client integration run by the Solvewright connector, not a model API key. Your commands run inside the agent's sandbox: you can write only inside this round folder and have no network access. Do not try to work around either limit; if something you need is blocked, say so in `message`.
