@@ -313,7 +313,8 @@ class CodexIsolationTests(unittest.TestCase):
             self.assertIn(expected, values)
         profile = next(value for value in values if value.startswith("permissions.solvewright.filesystem="))
         self.assertIn('"~"="deny"', profile)
-        self.assertIn('"/tmp/solvewright-interviews"="write"', profile)
+        # The profile names the folder in the platform's own spelling (backslashes on Windows, escaped for TOML).
+        self.assertIn(f'{json.dumps(str(client.write_root))}="write"', profile)
         with self.assertRaises(ValueError):
             client._overrides(profile=True, disable=["bad name; rm"])
 
