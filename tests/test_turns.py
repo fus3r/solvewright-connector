@@ -145,6 +145,82 @@ class TurnTests(unittest.TestCase):
         self.assertEqual((after["finished"], after["abandoned"], after["busy"], after["error"]), (True, True, False, ""))
         self.assertNotIn("turn", after)
 
+    # Ending now ---------------------------------------------------------------
+    def busy_turn(self, message, reply_during):
+        """Runs a turn whose agent calls end() mid-turn; returns what end() answered and the turn's cancel flag."""
+        seen = {}
+        def turn(state, directory, prompt, checkpoint, cancelled=None, effort=None, watch=None):
+            seen["reply"] = self.runtime.end(self.scope, self.state["id"])
+            seen["cancelled"] = cancelled.is_set()
+            return reply_during(cancelled)
+        self.state.update(busy=True)
+        self.runtime.save(self.scope, self.state)
+        self.runtime.cancellations[self.state["id"]] = rt.threading.Event()
+        with patch.object(self.runtime, "claude_turn", side_effect=turn), patch.object(rt.threading, "Thread") as thread:
+            self.runtime._turn(self.scope, self.state["id"], message, False)
+        return seen, thread
+
+    def test_ending_a_quiet_round_starts_its_marks_at_once_and_takes_no_more_messages(self):
+        with patch.object(rt.threading, "Thread") as thread:
+            ended = self.runtime.end(self.scope, self.state["id"])
+        self.assertEqual((ended["ending"], ended["busy"], ended["activity"]), (True, True, "Writing your marks"))
+        self.assertEqual(ended["messages"][-1]["role"], "user")
+        self.assertEqual(ended["messages"][-1]["text"], "end")
+        self.assertEqual(thread.call_args.kwargs["args"][2], "end")
+        stalled = self.runtime.load(self.scope, self.state["id"])
+        stalled["busy"] = False  # the marking turn failed: the round stays ended, and can be marked again
+        self.runtime.save(self.scope, stalled)
+        with self.assertRaisesRegex(ValueError, "being marked"):
+            self.runtime.start_turn(self.scope, self.state["id"], "hint")
+        with patch.object(rt.threading, "Thread"):
+            self.assertTrue(self.runtime.end(self.scope, self.state["id"])["busy"])
+
+    def test_ending_during_a_reply_stops_it_then_writes_the_marks(self):
+        def stopped(cancelled):
+            raise ValueError("The interviewer turn was stopped. Send a message to continue.")
+        seen, thread = self.busy_turn("Review my code", stopped)
+        self.assertTrue(seen["reply"]["ending"])
+        self.assertTrue(seen["cancelled"])
+        after = self.runtime.load(self.scope, self.state["id"])
+        self.assertEqual((after["ending"], after["busy"], after["error"], after["activity"]), (True, True, "", "Writing your marks"))
+        self.assertEqual(after["messages"][-1]["text"], "end")
+        self.assertEqual(thread.call_args.kwargs["args"][2], "end")
+        self.assertIn("ending", self.runtime.public(self.scope, after))
+
+    def test_ending_during_the_marking_turn_lets_it_finish(self):
+        seen, thread = self.busy_turn("end", lambda cancelled: {**REPLY, "finished": True})
+        self.assertFalse(seen["cancelled"])
+        after = self.runtime.load(self.scope, self.state["id"])
+        self.assertTrue(after["finished"])
+        self.assertNotIn("ending", after)
+        thread.assert_not_called()
+
+    def test_a_marking_turn_is_told_the_round_has_ended(self):
+        seen = {}
+        with patch.object(self.runtime, "claude_turn", side_effect=lambda state, directory, prompt, *args, **kwargs: seen.update(prompt=prompt) or {**REPLY, "finished": True}):
+            self.runtime._turn(self.scope, self.state["id"], "end", False)
+        self.assertIn(rt.END_RULE, seen["prompt"])
+
+    def test_ending_a_round_still_being_prepared_ends_it_without_marks(self):
+        self.state.update(messages=[])
+        self.runtime.save(self.scope, self.state)
+        ended = self.runtime.end(self.scope, self.state["id"])
+        self.assertEqual((ended["finished"], ended["abandoned"]), (True, True))
+
+    # Deleting -------------------------------------------------------------------
+    def test_deleting_a_round_removes_everything_but_never_a_round_at_work(self):
+        self.state["busy"] = True
+        self.runtime.save(self.scope, self.state)
+        with self.assertRaisesRegex(ValueError, "still working"):
+            self.runtime.delete(self.scope, self.state["id"])
+        self.state["busy"] = False
+        self.runtime.save(self.scope, self.state)
+        self.assertEqual(self.runtime.delete(self.scope, self.state["id"]), {"ok": True, "id": self.state["id"]})
+        self.assertFalse(self.directory.exists())
+        self.assertEqual(self.runtime.sessions(self.scope), [])
+        with self.assertRaisesRegex(ValueError, "not found"):
+            self.runtime.delete(self.scope, self.state["id"])
+
     # The page's checks -------------------------------------------------------
     def test_the_page_gets_the_private_checks_and_their_labels_only(self):
         checks = self.directory / ".examiner" / "checks"

@@ -14,6 +14,8 @@ Read [curriculum.txt](curriculum.txt) as a concept map rather than a finite syll
 
 A fresh quant-firm round also carries `domain`, already part of `styleBrief`. With `general`, the usual case, set the problem outside finance: no orders, prices, positions, portfolios or P&L, not even as names. What makes it a quant-firm round is what it demands, not market vocabulary: exact rules, performance at the stated sizes, decisions taken as the data arrives, conclusions drawn from sample data, and rules that change mid-round. The reported portals round is one: reusable infrastructure on a plane, with no market in it. With `finance`, set the problem in trading, and make the finance change the decision problem and its data semantics, not just rename generic objects. When `focus` names a domain or a finance concept, follow `focus`. Tech-company rounds and the reported round have no `domain`.
 
+Define every domain term in plain words where it first appears, in the message itself and not only in a README, as an interviewer would for a strong programmer who has never met the domain. In a finance round that means terms such as bid, ask, spread, order, fill, position, symbol and sequence number, each in one short clause (the bid is the highest price a buyer offers); in any round, a word such as lease, shard or tick that the task gives a precise meaning. When a later part brings a new term, define it there.
+
 ## Design and verify before interviewing
 
 1. Choose the observable skill gap and a suitable mechanism, then invent a concrete task around it. General, research, trading and systems tracks should produce substantively different decisions. Go beyond the map when another concept serves the candidate.

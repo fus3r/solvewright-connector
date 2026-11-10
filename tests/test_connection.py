@@ -82,6 +82,10 @@ class WorkerTests(unittest.TestCase):
         runtime.create.assert_called_once_with("owner", {"provider": "codex", "owner": "someone-else"})
         worker.dispatch(runtime, "owner", f"/sessions/{session}/test-runs", {"files": [], "run": {"exitCode": 0}})
         runtime.record_test_run.assert_called_once_with("owner", session, [], {"exitCode": 0})
+        worker.dispatch(runtime, "owner", f"/sessions/{session}/end", {})
+        runtime.end.assert_called_once_with("owner", session)
+        worker.dispatch(runtime, "owner", f"/sessions/{session}/delete", {})
+        runtime.delete.assert_called_once_with("owner", session)
         for path in (f"/sessions/{session}/tests", "/shell", f"/sessions/{session}/../x", "/sessions/x/message"):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 worker.dispatch(runtime, "owner", path, {})

@@ -45,12 +45,19 @@ DOMAIN_BRIEFS = {
                 "simulator with exact rules, a routing or placement engine, an event processor with time semantics, an "
                 "interpreter for a small language, or a data structure under real load."),
     "finance": ("Set it in trading: for example an order book, a matching engine, a position and risk tracker or a "
-                "market-data handler. The finance must shape the rules and the data, not just rename generic objects."),
+                "market-data handler. The finance must shape the rules and the data, not just rename generic objects. "
+                "Assume the candidate knows no finance: define every market term in plain words where it first appears, "
+                "as an interviewer would (for example: the bid is the highest price a buyer offers, the ask the lowest "
+                "price a seller accepts, a symbol names the instrument, a sequence number orders one feed's messages)."),
 }
 FINANCE_SHARE = 0.25
 REMARK_REQUEST = ("The candidate asks for a re-mark. Re-read the whole record: the conversation, every snapshot in "
                   ".snapshots/ and .examiner/test-runs.json. Rewrite .examiner/report.json strictly from that evidence. "
                   "Change a mark only where the record supports it, and say in notes what changed and why.")
+# Ending a round: the candidate's message, and what the marking turn is told.
+END_MESSAGE = "end"
+END_RULE = ("The candidate has ended the round. Write .examiner/report.json now from the evidence so far and return "
+            "finished true. Do not ask a question or release a part; the message is the short closing summary.")
 CHOICES = {"provider": ("codex", "claude"), "style": ("quant", "tech"), "track": ("hybrid", "research", "trading", "systems"),
            "mode": ("mock", "coached", "drill"), "difficulty": ("foundation", "standard", "stretch"),
            "ai": ("off", "assistant allowed", "audit AI-written code"), "case": ("fresh", "portals"),
@@ -65,7 +72,9 @@ CHECKS = ".examiner/checks"
 CHECKS_LIMIT = 400_000
 DIFF_LIMIT = 6_000
 OPENING_RULE = ("Open the message with the problem itself, starting with the task. The page already shows the settings, "
-                "the clock and the hint, skip, reveal and end controls, so do not restate them.")
+                "the clock and the hint, skip, reveal and end controls, so do not restate them. Define in plain words, in "
+                "the message itself, every domain term the problem uses (in a finance round: bid, ask, symbol, sequence "
+                "number and the like), as an interviewer would for a candidate who has never met the domain.")
 CHECKS_RULE = ("Also write the private checks the page runs in the candidate's browser when they submit: test files in "
                ".examiner/checks/ (test_*.py, pytest or unittest) that import from solution, are self-contained (no import "
                "of your reference, no files, network, threads, subprocesses or wall-clock timing; standard library plus "
@@ -278,6 +287,10 @@ class Runtime:
         self.claude_limits: dict | None = None
         # Rounds the candidate ended without marks while a turn was still running: closed when it stops.
         self.abandoning: set[str] = set()
+        # Rounds the candidate ended, to be marked, while a turn was still running: marked when it stops.
+        self.ending: set[str] = set()
+        # The kind of each turn under way, so ending a round leaves a marking turn to finish.
+        self.turn_kinds: dict[str, str] = {}
         for path in self.root.glob("*/sessions/*/state.json"):
             data = json.loads(path.read_text(encoding="utf-8"))
             if data.get("busy"):
@@ -489,6 +502,8 @@ class Runtime:
 
     def public(self, scope, state, files=False) -> dict:
         data = {key: value for key, value in state.items() if key not in ("agentSessionId", "activeTurn")}
+        if state["id"] in self.ending and not state.get("finished"):
+            data["ending"] = True  # Ended by the candidate; the turn under way stops, then the marks are written.
         directory = self.directory(scope, state["id"])
         data["baseRevision"] = self.base_revision(directory)
         if files:
@@ -632,11 +647,13 @@ class Runtime:
                             initial=True)
             return self.public(scope, self.load(scope, session_id), True)
 
-    def start_turn(self, scope, session_id, message, initial=False, remark=False) -> None:
+    def start_turn(self, scope, session_id, message, initial=False, remark=False, marking=False) -> None:
         with self.lock:
             state = self.load(scope, session_id)
             if state["busy"]:
                 raise ValueError("The interviewer is still working. Stop it or wait for its reply.")
+            if state.get("ending") and not marking:
+                raise ValueError("This round has ended and is being marked.")
             if remark and not state["finished"]:
                 raise ValueError("A round is re-marked only after it has ended.")
             if state.get("abandoned"):
@@ -651,7 +668,8 @@ class Runtime:
                     target = snapshot / file["path"]
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_text(file["content"], encoding="utf-8")
-            state.update(busy=True, error="", activity="Designing and checking a fresh exercise" if initial else "Re-marking from the record" if remark else "Reading your work and preparing a reply")
+            state.update(busy=True, error="", activity="Designing and checking a fresh exercise" if initial else "Re-marking from the record" if remark
+                         else "Writing your marks" if marking else "Reading your work and preparing a reply")
             self.save(scope, state)
             self.cancellations[session_id] = threading.Event()
         threading.Thread(target=self._turn, args=(scope, session_id, message, initial, remark), daemon=True).start()
@@ -670,6 +688,7 @@ class Runtime:
 
         # What kind of turn this is decides its effort and the steps the page shows while it runs.
         kind = "prepare" if initial else "mark" if (remark or repairing_report or message.strip().lower() in ("end", "debrief")) else "reply"
+        self.turn_kinds[session_id] = kind
         progress = activity.TurnProgress(kind, state, checkpoint, root=str(directory))
         checkpoint()
         effort = self.turn_effort(state["settings"], kind, provider)
@@ -722,15 +741,33 @@ class Runtime:
             state["activity"] = "Agent turn stopped"
             self.event("Turn stopped · " + str(error)[:160])
         finally:
+            mark_now = False
             with self.lock:
                 progress.finish()
                 state["busy"] = False
                 state.pop("activeTurn", None)
+                self.turn_kinds.pop(session_id, None)
                 if session_id in self.abandoning:
                     self.abandoning.discard(session_id)
+                    self.ending.discard(session_id)
                     mark_abandoned(state)
+                elif session_id in self.ending:
+                    self.ending.discard(session_id)
+                    if not state["finished"]:
+                        state["ending"] = mark_now = True
+                if state.get("finished"):
+                    state.pop("ending", None)
                 self.save(scope, state)
                 self.cancellations.pop(session_id, None)
+            if mark_now:
+                # The candidate ended the round while this turn ran: now write the marks.
+                try:
+                    self.start_turn(scope, session_id, END_MESSAGE, marking=True)
+                except ValueError as error:
+                    with self.lock:
+                        state = self.load(scope, session_id)
+                        state["error"] = str(error)
+                        self.save(scope, state)
 
     def remember_turn(self, directory: Path) -> None:
         """What the candidate's files were when the examiner last replied, so the next turn sends only the changes."""
@@ -768,6 +805,8 @@ class Runtime:
         if latest:
             parts.append(latest)
         parts.append("Candidate message:\n\n" + message)
+        if message.strip().lower() == END_MESSAGE:
+            parts.append(END_RULE)
         parts.append(FAST_RULES)
         return "\n\n".join(parts)
 
@@ -892,6 +931,46 @@ class Runtime:
             models = self.codex.models()
         self._codex_models = (time.monotonic(), models)
         return models
+
+    def end(self, scope, session_id) -> dict:
+        """End the round now and write its marks. A reply under way is stopped first and the marks start when it
+        does; a marking turn under way is left to finish. A round still being prepared has nothing to mark, so it
+        ends without marks."""
+        with self.lock:
+            state = self.load(scope, session_id)
+            if state["finished"]:
+                return self.public(scope, state, True)
+            preparing = not any(message["role"] == "assistant" for message in state["messages"])
+            if not preparing and not state["busy"]:
+                state["ending"] = True
+                self.save(scope, state)
+                self.start_turn(scope, session_id, END_MESSAGE, marking=True)
+                self.event("Marking a round · " + state["title"])
+                return self.public(scope, self.load(scope, session_id), True)
+            if not preparing:
+                self.ending.add(session_id)
+                marking = self.turn_kinds.get(session_id) == "mark"
+        if preparing:
+            return self.abandon(scope, session_id)
+        if not marking:
+            try:
+                self.interrupt(scope, session_id)
+            except (ValueError, OSError):
+                pass  # The cancel flag is set; the marks start when the turn next checks it.
+        self.event("Ending a round · " + state["title"])
+        return {**self.public(scope, state, True), "ending": True}
+
+    def delete(self, scope, session_id) -> dict:
+        """Remove a round and everything kept with it from this computer. The page removes the account's copy first,
+        so the next sync cannot bring it back."""
+        with self.lock:
+            state = self.load(scope, session_id)
+            if state["busy"] or session_id in self.ending or session_id in self.abandoning:
+                raise ValueError("The examiner is still working on this round. Stop it or wait, then delete it.")
+            shutil.rmtree(self.directory(scope, session_id))
+            self.cancellations.pop(session_id, None)
+        self.event("Round deleted · " + state["title"])
+        return {"ok": True, "id": session_id}
 
     def abandon(self, scope, session_id) -> dict:
         """End a round without the examiner and without marks: for a round still being prepared, or an examiner
