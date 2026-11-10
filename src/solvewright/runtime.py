@@ -58,6 +58,11 @@ REMARK_REQUEST = ("The candidate asks for a re-mark. Re-read the whole record: t
 END_MESSAGE = "end"
 END_RULE = ("The candidate has ended the round. Write .examiner/report.json now from the evidence so far and return "
             "finished true. Do not ask a question or release a part; the message is the short closing summary.")
+# Past the planned time the round stays open: only the candidate ends it, or work that completes the last part.
+OVERTIME_RULE = ("The planned time is up. Do not end the round for that. If you have not said so yet, say in one sentence "
+                 "that the time is up and that the candidate can keep going or press End round. Then answer their message "
+                 "about the current part, without releasing a new one. End the round only if they ask to or their work "
+                 "completes the last part; the report records the time taken against the plan.")
 CHOICES = {"provider": ("codex", "claude"), "style": ("quant", "tech"), "track": ("hybrid", "research", "trading", "systems"),
            "mode": ("mock", "coached", "drill"), "difficulty": ("foundation", "standard", "stretch"),
            "ai": ("off", "assistant allowed", "audit AI-written code"), "case": ("fresh", "portals"),
@@ -807,6 +812,8 @@ class Runtime:
         parts.append("Candidate message:\n\n" + message)
         if message.strip().lower() == END_MESSAGE:
             parts.append(END_RULE)
+        elif minutes is not None and type(state["settings"].get("minutes")) is int and minutes >= state["settings"]["minutes"]:
+            parts.append(OVERTIME_RULE)
         parts.append(FAST_RULES)
         return "\n\n".join(parts)
 

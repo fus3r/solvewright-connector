@@ -207,6 +207,13 @@ class TurnTests(unittest.TestCase):
         ended = self.runtime.end(self.scope, self.state["id"])
         self.assertEqual((ended["finished"], ended["abandoned"]), (True, True))
 
+    def test_past_its_time_the_round_stays_open_until_the_candidate_ends_it(self):
+        # The fixture's round began hours ago against a 50-minute plan.
+        self.assertIn(rt.OVERTIME_RULE, self.runtime.continuation(self.state, self.directory, "Could you read my code?"))
+        self.assertNotIn(rt.OVERTIME_RULE, self.runtime.continuation(self.state, self.directory, "end"))
+        fresh = {**self.state, "messages": [{"role": "assistant", "text": "Build a bid budget.", "at": rt.stamp()}]}
+        self.assertNotIn(rt.OVERTIME_RULE, self.runtime.continuation(fresh, self.directory, "Could you read my code?"))
+
     # Deleting -------------------------------------------------------------------
     def test_deleting_a_round_removes_everything_but_never_a_round_at_work(self):
         self.state["busy"] = True
