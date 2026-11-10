@@ -119,6 +119,32 @@ class TurnTests(unittest.TestCase):
             self.runtime._turn(self.scope, self.state["id"], "end", False)
         self.assertEqual(seen["effort"], "xhigh")
 
+    # Ending without marks --------------------------------------------------
+    def test_a_quiet_round_ends_without_marks_at_once_and_stays_ended(self):
+        ended = self.runtime.abandon(self.scope, self.state["id"])
+        self.assertTrue(ended["finished"] and ended["abandoned"])
+        self.assertNotIn("reportError", ended)
+        with self.assertRaisesRegex(ValueError, "ended without marks"):
+            self.runtime.start_turn(self.scope, self.state["id"], "hint")
+        exported = self.runtime.export_sync(self.scope)["sessions"][0]["state"]
+        self.assertTrue(exported["abandoned"])
+
+    def test_a_round_being_prepared_closes_without_marks_when_its_turn_stops(self):
+        seen = {}
+        def turn(state, directory, prompt, checkpoint, cancelled=None, effort=None, watch=None):
+            seen["reply"] = self.runtime.abandon(self.scope, self.state["id"])
+            self.assertTrue(cancelled.is_set())
+            raise ValueError("The interviewer turn was stopped. Send a message to continue.")
+        self.state.update(messages=[], busy=True)
+        self.runtime.save(self.scope, self.state)
+        self.runtime.cancellations[self.state["id"]] = rt.threading.Event()
+        with patch.object(self.runtime, "claude_turn", side_effect=turn):
+            self.runtime._turn(self.scope, self.state["id"], "Start a new live runtime interview.", True)
+        self.assertTrue(seen["reply"]["ending"])
+        after = self.runtime.load(self.scope, self.state["id"])
+        self.assertEqual((after["finished"], after["abandoned"], after["busy"], after["error"]), (True, True, False, ""))
+        self.assertNotIn("turn", after)
+
     # The page's checks -------------------------------------------------------
     def test_the_page_gets_the_private_checks_and_their_labels_only(self):
         checks = self.directory / ".examiner" / "checks"

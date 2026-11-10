@@ -11,6 +11,7 @@ import base64
 import difflib
 import hashlib
 import json
+import random
 import re
 import shutil
 import subprocess
@@ -25,19 +26,28 @@ from . import activity, agents
 SYNC_FORMAT = "solvewright-interview-sync-v1"
 SYNC_LIMIT = 5_000_000
 PORTABLE_STATE = ("id", "at", "updatedAt", "revision", "title", "caseFamily", "concepts", "settings", "messages", "stage",
-                  "part", "parts", "partTimes", "finished", "testRuns", "error", "activity")
+                  "part", "parts", "partTimes", "finished", "testRuns", "error", "activity", "abandoned")
 DEFAULT_SETTINGS = {"provider": "codex", "model": "", "effort": "", "style": "quant", "track": "hybrid", "mode": "mock", "minutes": 50,
                     "difficulty": "standard", "focus": "", "ai": "off", "case": "fresh", "language": "Python"}
 # What each interview style asks of the examiner, written into session-settings.json.
 STYLE_BRIEFS = {
     "quant": ("A practical coding round in the style of quant firms such as HRT, Jane Street or Citadel: the candidate "
-              "designs and builds a small executable system (a simulator, a matching or routing engine, an event "
-              "processor with time semantics, a data structure under real load). Exactness and performance matter, "
-              "and the requirements change mid-round."),
+              "designs and builds a small executable system. Exactness and performance matter, and the requirements "
+              "change mid-round."),
     "tech": ("A practical system-design coding round at a tech company: the candidate builds a working component of a "
              "real system (a cache, a scheduler, a rate limiter, a storage or queueing layer) with clear interfaces and "
              "tests, and the requirements change mid-round. Not a LeetCode puzzle."),
 }
+# The domain of a fresh quant-firm round, added to its brief. Like the reported portals round, most are set
+# outside finance: one draw in four is set in trading, never twice running, so about one round in five.
+DOMAIN_BRIEFS = {
+    "general": ("Set it outside finance, with no orders, prices, positions or P&L, not even as names: for example a "
+                "simulator with exact rules, a routing or placement engine, an event processor with time semantics, an "
+                "interpreter for a small language, or a data structure under real load."),
+    "finance": ("Set it in trading: for example an order book, a matching engine, a position and risk tracker or a "
+                "market-data handler. The finance must shape the rules and the data, not just rename generic objects."),
+}
+FINANCE_SHARE = 0.25
 REMARK_REQUEST = ("The candidate asks for a re-mark. Re-read the whole record: the conversation, every snapshot in "
                   ".snapshots/ and .examiner/test-runs.json. Rewrite .examiner/report.json strictly from that evidence. "
                   "Change a mark only where the record supports it, and say in notes what changed and why.")
@@ -126,6 +136,15 @@ def clean_settings(settings) -> dict:
     return chosen
 
 
+def round_domain(settings, earlier, draw=None) -> str | None:
+    """The domain of a fresh quant-firm round: "finance" or "general" (outside finance). Tech-company rounds and the
+    reported round have their own. `earlier` lists this owner's rounds, newest first."""
+    if settings["style"] != "quant" or settings["case"] != "fresh":
+        return None
+    last = next((item["settings"]["domain"] for item in earlier if (item.get("settings") or {}).get("domain")), None)
+    return "finance" if last != "finance" and (draw or random.random)() < FINANCE_SHARE else "general"
+
+
 def validate_report(report, state):
     """Match the portable report contract before exposing it as scored history."""
     def text(value, limit=4000, empty=False):
@@ -196,6 +215,11 @@ def clean_test_run(run) -> dict:
     return result
 
 
+def mark_abandoned(state) -> None:
+    state.update(finished=True, abandoned=True, busy=False, error="", activity="Ended without marks")
+    state.pop("turn", None)
+
+
 def active_minutes(state, now=None):
     """Minutes since the round's first examiner message, without the spans the examiner held the round."""
     parse = lambda value: datetime.fromisoformat(str(value).replace("Z", "+00:00"))
@@ -252,6 +276,8 @@ class Runtime:
         self.isolation = {"claude": "sandbox" if agents.claude_can_sandbox() else "no-commands", "codex": "sandbox"}
         self.on_event = None
         self.claude_limits: dict | None = None
+        # Rounds the candidate ended without marks while a turn was still running: closed when it stops.
+        self.abandoning: set[str] = set()
         for path in self.root.glob("*/sessions/*/state.json"):
             data = json.loads(path.read_text(encoding="utf-8"))
             if data.get("busy"):
@@ -468,7 +494,7 @@ class Runtime:
         if files:
             data["files"] = self.candidate_files(directory)
         report = directory / ".examiner" / "report.json"
-        if state.get("finished"):
+        if state.get("finished") and not state.get("abandoned"):
             try:
                 if not report.is_file():
                     raise ValueError("No assessment report was saved for this round.")
@@ -577,8 +603,13 @@ class Runtime:
         settings = clean_settings(settings)
         agents.provider_executable("claude" if settings["provider"] == "claude" else "codex")
         with self.lock:
-            if any(item.get("busy") for item in self.sessions(scope)):
+            earlier = self.sessions(scope)
+            if any(item.get("busy") for item in earlier):
                 raise ValueError("Finish or stop the interviewer's current turn before starting another round.")
+            domain = round_domain(settings, earlier)
+            if domain:
+                settings["domain"] = domain
+            brief = STYLE_BRIEFS[settings["style"]] + (" " + DOMAIN_BRIEFS[domain] if domain else "")
             session_id = str(uuid.uuid4())
             directory = self.directory(scope, session_id)
             (directory / "workspace" / "tests").mkdir(parents=True)
@@ -588,12 +619,13 @@ class Runtime:
                      "settings": settings, "messages": [], "stage": "Preparing", "busy": False, "finished": False,
                      "testRuns": [], "error": "", "activity": "Designing and checking the exercise"}
             write_json(directory / "history-context.json", self.history_context(scope, session_id))
-            write_json(directory / "session-settings.json", {**settings, "styleBrief": STYLE_BRIEFS[settings["style"]], "id": session_id, "at": state["at"]})
+            write_json(directory / "session-settings.json", {**settings, "styleBrief": brief, "id": session_id, "at": state["at"]})
             self.save(scope, state)
             self.start_turn(scope, session_id, "Start a new live runtime interview. Read context/interviewer/interviewer.txt, "
                             "context/interviewer/references/case-generation.txt and context/interviewer/references/curriculum.txt. "
                             "Read history-context.json and session-settings.json. Generate a fresh problem and a verified setup; "
-                            "do not select from a catalogue. Use the reported portal case only if settings.case is portals. Create the "
+                            "do not select from a catalogue. Set it in settings.domain when there is one: general means outside "
+                            "finance. Use the reported portal case only if settings.case is portals. Create the "
                             "manifest and private reference, verify it, and publish candidate files before asking the opening "
                             "task. " + CHECKS_RULE + " " + OPENING_RULE + " Return the required structured reply. Do not solve "
                             "candidate work or expose future stages.",
@@ -607,6 +639,8 @@ class Runtime:
                 raise ValueError("The interviewer is still working. Stop it or wait for its reply.")
             if remark and not state["finished"]:
                 raise ValueError("A round is re-marked only after it has ended.")
+            if state.get("abandoned"):
+                raise ValueError("This round was ended without marks. Start a fresh round to keep practising.")
             if state["finished"] and not remark and "reportError" not in self.public(scope, state):
                 raise ValueError("This round has ended. Start a fresh round to keep practising.")
             directory = self.directory(scope, session_id)
@@ -692,6 +726,9 @@ class Runtime:
                 progress.finish()
                 state["busy"] = False
                 state.pop("activeTurn", None)
+                if session_id in self.abandoning:
+                    self.abandoning.discard(session_id)
+                    mark_abandoned(state)
                 self.save(scope, state)
                 self.cancellations.pop(session_id, None)
 
@@ -855,6 +892,26 @@ class Runtime:
             models = self.codex.models()
         self._codex_models = (time.monotonic(), models)
         return models
+
+    def abandon(self, scope, session_id) -> dict:
+        """End a round without the examiner and without marks: for a round still being prepared, or an examiner
+        that cannot answer. A turn under way is stopped first and the round closes when it does."""
+        with self.lock:
+            state = self.load(scope, session_id)
+            if state["finished"]:
+                return self.public(scope, state, True)
+            if not state["busy"]:
+                mark_abandoned(state)
+                self.save(scope, state)
+                self.event("Round ended without marks · " + state["title"])
+                return self.public(scope, state, True)
+            self.abandoning.add(session_id)
+        try:
+            self.interrupt(scope, session_id)
+        except (ValueError, OSError):
+            pass  # The cancel flag is set; the turn closes the round when it next checks it.
+        self.event("Ending a round without marks · " + state["title"])
+        return {**self.public(scope, state, True), "ending": True}
 
     def interrupt(self, scope, session_id) -> None:
         with self.lock:

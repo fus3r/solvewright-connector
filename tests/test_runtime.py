@@ -248,11 +248,31 @@ class StyleAndMarkingTests(unittest.TestCase):
         settings = json.loads((self.runtime.directory("owner", created["id"]) / "session-settings.json").read_text(encoding="utf-8"))
         self.assertEqual(settings["style"], "tech")
         self.assertIn("Not a LeetCode puzzle", settings["styleBrief"])
+        self.assertNotIn("domain", settings)
         self.assertEqual(settings["effort"], "high")
         with self.assertRaises(ValueError):
             rt.clean_settings({"style": "trading"})
         with self.assertRaises(ValueError):
             rt.clean_settings({"effort": "--max"})
+
+    def test_quant_rounds_are_mostly_set_outside_finance_and_never_in_trading_twice_running(self):
+        quant = rt.clean_settings({"style": "quant"})
+        self.assertEqual(rt.round_domain(quant, [], draw=lambda: 0.3), "general")
+        self.assertEqual(rt.round_domain(quant, [], draw=lambda: 0.2), "finance")
+        # The latest round with a domain decides, whatever came between.
+        after_finance = [{"settings": rt.clean_settings({"style": "tech", "track": "systems"})}, {"settings": {**quant, "domain": "finance"}}]
+        self.assertEqual(rt.round_domain(quant, after_finance, draw=lambda: 0.0), "general")
+        self.assertEqual(rt.round_domain(quant, [{"settings": {**quant, "domain": "general"}}], draw=lambda: 0.0), "finance")
+        self.assertIsNone(rt.round_domain(rt.clean_settings({"style": "tech", "track": "systems"}), [], draw=lambda: 0.0))
+        self.assertIsNone(rt.round_domain(rt.clean_settings({"case": "portals"}), [], draw=lambda: 0.0))
+        with patch.object(agents, "provider_executable", return_value="claude"), patch.object(self.runtime, "start_turn") as turn:
+            created = self.runtime.create("owner", {"provider": "claude"})
+        written = json.loads((self.runtime.directory("owner", created["id"]) / "session-settings.json").read_text(encoding="utf-8"))
+        self.assertIn(written["domain"], rt.DOMAIN_BRIEFS)
+        self.assertTrue(written["styleBrief"].endswith(rt.DOMAIN_BRIEFS[written["domain"]]))
+        self.assertNotIn("matching engine", rt.STYLE_BRIEFS["quant"])
+        self.assertEqual(self.runtime.load("owner", created["id"])["settings"]["domain"], written["domain"])
+        self.assertIn("settings.domain", turn.call_args.args[2])
 
     def test_parts_are_recorded_with_when_each_was_first_shown(self):
         state = {"id": str(uuid.uuid4()), "at": rt.stamp(), "settings": {**rt.DEFAULT_SETTINGS, "provider": "claude"}, "busy": False,

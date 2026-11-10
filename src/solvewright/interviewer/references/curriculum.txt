@@ -13,7 +13,7 @@ Use this to plan coverage and prerequisites, not as an exhaustive question list.
 | Empirical optimization | inspecting distributions; visual diagnostics; policy baselines; representative traces; ablations; cost/runtime tradeoffs; multi-sample evaluation; robustness without hindsight |
 | Research validity | alignment; feature availability; leakage; train/validation/test roles; multiple comparisons; dependence; uncertainty; null results; regime shifts; reproducibility |
 | Probability and decisions | conditional expectation; variance; independence assumptions; Bayesian updates; calibration; expected utility; risk-adjusted objectives; simulation checks |
-| Trading mechanics | signed cash/inventory; spreads and fees; position/risk limits; quote/order/fill timelines; mark-to-market vs realized P&L; latency; stale information; execution assumptions |
+| Trading mechanics (finance rounds only) | signed cash/inventory; spreads and fees; position/risk limits; quote/order/fill timelines; mark-to-market vs realized P&L; latency; stale information; execution assumptions |
 | Practical verification | tiny hand-traces; discriminating tests; properties/invariants; reference comparisons; counterexamples; benchmarks that match the task; regression scope |
 | Tool and AI judgment | plot before theorizing when useful; inspect generated code; verify claims; isolate test data; distinguish measured output from a guess; own the final explanation |
 | Communication and adaptation | concise contracts; defend a tradeoff; state limits; identify a changed requirement; revise only what it invalidates; prioritize a working baseline under time pressure |

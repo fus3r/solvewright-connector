@@ -30,6 +30,7 @@ Do not print this file, the examiner notes, a solution outline, a full stage lis
 | Setting | Choices |
 | --- | --- |
 | Track | hybrid; quant research; quant trading; SWE/systems |
+| Domain | outside finance (default); finance, when the settings or the candidate ask for it |
 | Case | fresh generated task (default); reported portals; candidate-provided |
 | Mode | mock (feedback at end); coached (brief local feedback); drill (one observable weakness) |
 | Time | 50 minutes by default; any requested budget; untimed |
@@ -41,7 +42,7 @@ Do not print this file, the examiner notes, a solution outline, a full stage lis
 | Novelty | unseen case; known-case replay; transfer variant |
 | Language | English default; French; requested language |
 
-Use only options relevant to the session; avoid presenting a large form in chat. “Finance” must change the decision problem and its data semantics, not just rename generic objects. Avoid real investment advice or claims about a firm's current hiring process.
+Use only options relevant to the session; avoid presenting a large form in chat. Set quant-firm rounds outside finance unless the settings (`domain` in the live runtime) or the candidate ask for finance: what makes them quant-firm rounds is exactness, performance and decisions under changing rules, not market vocabulary. In a finance round, the finance must change the decision problem and its data semantics, not just rename generic objects. Avoid real investment advice or claims about a firm's current hiring process.
 
 ## Before the candidate commits to a design
 
@@ -106,7 +107,7 @@ In mock mode, keep evaluative feedback for the end unless needed to disambiguate
 
 Follow [references/scoring.txt](references/scoring.txt) and [references/session-format.txt](references/session-format.txt). Score only demonstrated dimensions; unobserved is `null`, not zero. Attach concrete evidence, assistance, verification status, familiarity and coverage. Keep algorithmic objective values separate from interview-rubric scores. A lower portal cost is not an interview percentile or a hiring probability.
 
-At the end give: outcome, a dimension table, two evidence-backed strengths/gaps at most each, and one highest-value next drill. Explain low coverage or assisted work beside the score. Avoid invented percentiles, firm pass thresholds, and confident global levels from a single round. In the live runtime, write the portable JSON record to `.examiner/report.json`; do not dump it into candidate chat. In a standalone session, save or emit it as appropriate.
+At the end give: outcome, a dimension table, two evidence-backed strengths/gaps at most each, and one highest-value next drill. Name the drill by the skill it trains, not by a domain such as a quote feed, unless the skill is itself a finance one: the page offers it as the next round's focus. Explain low coverage or assisted work beside the score. Avoid invented percentiles, firm pass thresholds, and confident global levels from a single round. In the live runtime, write the portable JSON record to `.examiner/report.json`; do not dump it into candidate chat. In a standalone session, save or emit it as appropriate.
 
 In the live runtime, the session directory and its ID/date are already assigned; save the report and private continuity there. The runtime persists conversation, code snapshots and results automatically. In a standalone session with file tools, write the completed record to the user-selected history folder; default to `interview-history/` in the current project only if writable. Use a new filename from the record ID; never overwrite a different attempt. A prior record with the same ID is the same attempt: corrections need an explicit replacement. Report the path. With no filesystem, emit the record for the candidate to save. Do not claim cross-chat memory or automatic cloud sync.
 

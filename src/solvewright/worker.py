@@ -14,7 +14,7 @@ import uuid
 from . import __version__, agents, connection
 from .service import ServiceError, Unavailable
 
-ROUND = re.compile(r"/sessions/([a-f0-9-]{36})(?:/(message|files|test-runs|interrupt|checks))?")
+ROUND = re.compile(r"/sessions/([a-f0-9-]{36})(?:/(message|files|test-runs|interrupt|checks|abandon))?")
 ACTIVE_SECONDS, ACTIVE_POLL, IDLE_POLL = 180, 1.0, 4.0
 
 
@@ -88,6 +88,8 @@ def dispatch(runtime, owner: str, path: str, body):
     if operation == "interrupt":
         runtime.interrupt(owner, session_id)
         return {"ok": True}
+    if operation == "abandon":
+        return runtime.abandon(owner, session_id)
     raise ValueError("Unsupported interview operation.")
 
 
