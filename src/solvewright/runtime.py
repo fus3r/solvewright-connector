@@ -32,18 +32,19 @@ DEFAULT_SETTINGS = {"provider": "codex", "model": "", "effort": "", "style": "qu
 # What each interview style asks of the examiner, written into session-settings.json.
 STYLE_BRIEFS = {
     "quant": ("A practical coding round in the style of quant firms such as HRT, Jane Street or Citadel: the candidate "
-              "designs and builds a small executable system. Exactness and performance matter, and the requirements "
-              "change mid-round."),
+              "designs and builds a small executable system in parts, and each new requirement tests the design they "
+              "already wrote. Exactness and performance matter."),
     "tech": ("A practical system-design coding round at a tech company: the candidate builds a working component of a "
-             "real system (a cache, a scheduler, a rate limiter, a storage or queueing layer) with clear interfaces and "
-             "tests, and the requirements change mid-round. Not a LeetCode puzzle."),
+             "real system (a cache, a scheduler, a rate limiter, a storage or queueing layer) in parts, with clear "
+             "interfaces and tests, and each new requirement tests the design. Not a LeetCode puzzle."),
 }
 # The domain of a fresh quant-firm round, added to its brief. Like the reported portals round, most are set
 # outside finance: one draw in four is set in trading, never twice running, so about one round in five.
 DOMAIN_BRIEFS = {
-    "general": ("Set it outside finance, with no orders, prices, positions or P&L, not even as names: for example a "
-                "simulator with exact rules, a routing or placement engine, an event processor with time semantics, an "
-                "interpreter for a small language, or a data structure under real load."),
+    "general": ("Set it outside finance, with no orders, prices, positions or P&L, not even as names: a small system "
+                "someone would really build, for example the controller of a smart home, a build system, a job scheduler "
+                "with retries, a lighting desk, a delivery dispatcher, a cache under load, a spreadsheet with formulas, "
+                "or a simulator with exact rules."),
     "finance": ("Set it in trading: for example an order book, a matching engine, a position and risk tracker or a "
                 "market-data handler. The finance must shape the rules and the data, not just rename generic objects. "
                 "Assume the candidate knows no finance: define every market term in plain words where it first appears, "
@@ -57,7 +58,9 @@ REMARK_REQUEST = ("The candidate asks for a re-mark. Re-read the whole record: t
 # Ending a round: the candidate's message, and what the marking turn is told.
 END_MESSAGE = "end"
 END_RULE = ("The candidate has ended the round. Write .examiner/report.json now from the evidence so far and return "
-            "finished true. Do not ask a question or release a part; the message is the short closing summary.")
+            "finished true. Do not ask a question or release a part; the message is the short closing summary. If the "
+            "candidate never ran or submitted their code, leave every dimension null and set status to stopped: an "
+            "unfinished file is not evidence.")
 # Past the planned time the round stays open: only the candidate ends it, or work that completes the last part.
 OVERTIME_RULE = ("The planned time is up. Do not end the round for that. If you have not said so yet, say in one sentence "
                  "that the time is up and that the candidate can keep going or press End round. Then answer their message "
@@ -76,10 +79,14 @@ REPLY_CAP, ADVANCED_REPLY_CAP = "medium", "xhigh"
 CHECKS = ".examiner/checks"
 CHECKS_LIMIT = 400_000
 DIFF_LIMIT = 6_000
-OPENING_RULE = ("Open the message with the problem itself, starting with the task. The page already shows the settings, "
-                "the clock and the hint, skip, reveal and end controls, so do not restate them. Define in plain words, in "
-                "the message itself, every domain term the problem uses (in a finance round: bid, ask, symbol, sequence "
-                "number and the like), as an interviewer would for a candidate who has never met the domain.")
+OPENING_RULE = ("Open the message like an interviewer, with the problem itself: the scenario in two or three sentences, "
+                "the interface the tests call (verbs for actions, nouns or questions for queries), one worked example as "
+                "a short table or timeline, then the task. Keep it under about 200 words; guarantees, bounds and tie rules "
+                "go in README.md under Rules. The page already shows the settings, the clock and the hint, skip, reveal "
+                "and end controls, so do not restate them. Define in plain words, in the message itself, every domain term "
+                "the problem uses (in a finance round: bid, ask, symbol, sequence number and the like), as an interviewer "
+                "would for a candidate who has never met the domain. Do not ask the candidate to add a test of their own "
+                "unless testing is this part's task.")
 CHECKS_RULE = ("Also write the private checks the page runs in the candidate's browser when they submit: test files in "
                ".examiner/checks/ (test_*.py, pytest or unittest) that import from solution, are self-contained (no import "
                "of your reference, no files, network, threads, subprocesses or wall-clock timing; standard library plus "
@@ -644,11 +651,12 @@ class Runtime:
             self.start_turn(scope, session_id, "Start a new live runtime interview. Read context/interviewer/interviewer.txt, "
                             "context/interviewer/references/case-generation.txt and context/interviewer/references/curriculum.txt. "
                             "Read history-context.json and session-settings.json. Generate a fresh problem and a verified setup; "
-                            "do not select from a catalogue. Set it in settings.domain when there is one: general means outside "
-                            "finance. Use the reported portal case only if settings.case is portals. Create the "
-                            "manifest and private reference, verify it, and publish candidate files before asking the opening "
-                            "task. " + CHECKS_RULE + " " + OPENING_RULE + " Return the required structured reply. Do not solve "
-                            "candidate work or expose future stages.",
+                            "do not select from a catalogue. Follow the shape of a good round in case-generation.txt: a "
+                            "scenario, a small interface, parts whose new requirements test the design. Set it in "
+                            "settings.domain when there is one: general means outside finance. Use the reported portal case "
+                            "only if settings.case is portals. Create the manifest and private reference, verify it, and "
+                            "publish candidate files before asking the opening task. " + CHECKS_RULE + " " + OPENING_RULE +
+                            " Return the required structured reply. Do not solve candidate work or expose future stages.",
                             initial=True)
             return self.public(scope, self.load(scope, session_id), True)
 

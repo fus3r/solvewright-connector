@@ -23,6 +23,10 @@ Rubric values apply to observed work under the stated assistance:
 - **4:** strong core plus successful defense or transfer to a meaningful variation. More abstractions do not earn more points.
 - **null:** not observed. Never convert missing evidence into a failure or a success.
 
+**Early ends.** A round the candidate ended before running or submitting their code says nothing about their skill: leave every dimension null, set `status` to `stopped`, and say so in notes. Never mark a half-typed file.
+
+**Validation** is judged from the checking the task asked for and from what the candidate did with test results. Not writing extra tests that nobody asked for is not a gap: leave it out of `gaps` and of `nextDrill`.
+
 Each observed score needs a short piece of evidence: what the candidate said, built, tested or failed. Record `assistance`: `none`, `hint`, `revealed`, or `ai`. Use the strongest assistance that materially affected the evidence for that dimension. A clarification answer about the rules is not a hint. A revealed testing syntax example need not contaminate an independently derived model; a revealed algorithm does affect implementation of that algorithm. If ambiguous, explain the uncertainty and use the more cautious assistance label.
 
 ## Summary score and coverage

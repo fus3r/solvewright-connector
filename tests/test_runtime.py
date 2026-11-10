@@ -255,6 +255,23 @@ class StyleAndMarkingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             rt.clean_settings({"effort": "--max"})
 
+    def test_a_round_is_asked_for_as_a_system_in_parts_not_a_dictated_class(self):
+        # The rounds of 2026-11-10 were single data structures with every method dictated, openings written as
+        # contracts, a standing "add one test of your own" and marks for files left half-typed by an early end.
+        for phrase in ("scenario", "one worked example", "README.md under Rules", "unless testing is this part's task"):
+            self.assertIn(phrase, rt.OPENING_RULE)
+        self.assertNotIn("data structure under real load", rt.DOMAIN_BRIEFS["general"])
+        self.assertIn("in parts", rt.STYLE_BRIEFS["quant"])
+        self.assertIn("never ran or submitted", rt.END_RULE)
+        guide = (INSTRUCTIONS / "references" / "case-generation.txt").read_text(encoding="utf-8")
+        self.assertIn("## The shape of a good round", guide)
+        self.assertNotIn("one small component with clear rules", guide)
+        scoring = (INSTRUCTIONS / "references" / "scoring.txt").read_text(encoding="utf-8")
+        self.assertIn("**Early ends.**", scoring)
+        with patch.object(agents, "provider_executable", return_value="claude"), patch.object(self.runtime, "start_turn") as turn:
+            self.runtime.create("owner", {"provider": "claude"})
+        self.assertIn("shape of a good round", turn.call_args.args[2])
+
     def test_quant_rounds_are_mostly_set_outside_finance_and_never_in_trading_twice_running(self):
         quant = rt.clean_settings({"style": "quant"})
         self.assertEqual(rt.round_domain(quant, [], draw=lambda: 0.3), "general")
