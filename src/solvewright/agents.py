@@ -29,6 +29,8 @@ import threading
 import time
 from pathlib import Path
 
+from . import cpp
+
 WINDOWS = sys.platform == "win32"
 
 REPLY_SCHEMA = {"type": "object", "properties": {
@@ -280,7 +282,7 @@ class CodexClient:
                 raise ValueError(f"Codex has an MCP server named {name!r} that the connector cannot switch off safely.")
             values.append(f"mcp_servers.{name}.enabled=false")
         if profile:
-            readable = {"~/.local/bin", *self._install_roots()}
+            readable = {"~/.local/bin", *self._install_roots(), *cpp.discover()["readRoots"]}
             entries = ['"~"="deny"'] + [f'{json.dumps(path)}="read"' for path in sorted(readable)]
             entries.append(f'{json.dumps(str(self.write_root))}="write"')
             values += ['default_permissions="solvewright"', 'permissions.solvewright.extends=":workspace"',

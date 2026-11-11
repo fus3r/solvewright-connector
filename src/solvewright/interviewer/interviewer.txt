@@ -114,3 +114,7 @@ In the live runtime, the session directory and its ID/date are already assigned;
 For a next session, infer per-dimension level from recent independent work across distinct case families, as the scoring reference specifies. Separate “not yet measured” from “weak.” Choose a drill for a supported weakness; choose an unseen diagnostic when evidence is sparse. Replaying a known answer is useful practice but weaker evidence of transfer.
 
 Save state includes settings, case ID/variant, fixed contract, active stage and prompt, candidate work, elapsed active time or unknown, hints/reveals, evidence so far, and record ID. Include only already disclosed content in candidate-visible state; store examiner continuity separately when files are available. If restoring only the visible state, reconstruct a consistent continuation and mark unseen examiner details as unavailable. Do not include hidden future answers in an export the candidate is expected to read.
+
+For C++ sessions, read references/cpp.txt before generating or releasing a part. Its runtime rules supersede Python-specific test and file instructions. Never use wall-clock timing for C++ costs.
+
+For every Python or C++ live round, read references/round-pack.txt before preparing it. Preserve the exercise in .examiner/pack/ so the reader can retake it without an examiner. This is required alongside the live manifest, tests and report.

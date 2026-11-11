@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "solvewright"
-version = "0.1.6"
+version = "0.1.7"
 description = "Connect your own Claude Code or Codex to Solvewright Interview Lab for mock technical interviews."
 readme = "README.md"
 license = "MIT"

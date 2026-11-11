@@ -47,7 +47,7 @@ stop the interviewer, and sync your history. There is no request that runs a com
 - **It never sees your Claude or ChatGPT credentials.** It starts the official `claude` or `codex`
   program, unmodified, which signs in the way it always does. Usage counts against your own plan.
 - **It never runs your code.** Public tests and the interviewer's private checks run in your browser,
-  in Pyodide (Python compiled to WebAssembly); the page shows each check's label and result, never its
+  in Pyodide for Python or Clang for C++ (compiled to WebAssembly); the page shows each check's label and result, never its
   code. The connector only stores the files you tested and the results.
 - **It reports progress, not content.** While the interviewer works, the page learns which kind of
   step it is on (reading your code, writing its notes, running its checks), never what it reads,
@@ -58,10 +58,33 @@ stop the interviewer, and sync your history. There is no request that runs a com
   instructions ship inside the package (`src/solvewright/interviewer/`), so you can read exactly what
   your agent is told.
 
+### C++ rounds (0.1.7)
+
+The computer reports C++ only after `c++`, `g++` or `clang++` compiles and runs a small C++20
+probe. Install Xcode Command Line Tools on macOS (`xcode-select --install`) or `build-essential`
+on Linux, then restart the connector. Native Windows supports Codex with a working GNU-style
+`clang++` or `g++` C++20 toolchain (LLVM/MinGW); MSVC `cl.exe` is not supported. Claude Code needs
+a command sandbox on macOS, Linux or WSL2 and cannot verify C++ on native Windows.
+
+The candidate writes `solution.hpp`. Tests in `tests/test_*.cpp` and private checks in
+`.examiner/checks/test_*.cpp` use the bundled `check.hpp` (identical to the page's header), with
+`TEST`, `CHECK` and `CHECK_EQ`. Checks retain their labels and notes in `checks.json`. The agent
+verifies each part natively in its sandbox with C++20, `-fno-exceptions -O1 -Wall -I. -I.sw`, proving
+that the reference passes and a wrong solution fails before releasing it. Only the browser runs
+candidate code. Its one-time compiler download is about 17.5 MB from jsDelivr.
+
+Rounds use one thread and no exceptions: a library operation that would throw aborts; explicit
+throw/try/catch cannot compile. Cost requirements use counted allocations, comparisons or copies,
+never wall-clock timing. Allocation checks use strings longer than 22 characters to avoid differing
+inline-string capacities between the browser and macOS. Each browser test has a fresh instance and
+a 5 second safety limit. Run file accepts a C++ source with its own `main()`.
+
 ### The interviewer's sandbox
 
 The interviewer writes the problem and checks its own reference solution, so it needs to run code.
-It does that inside its own agent's sandbox, confined to the folder of the current round:
+It does that inside its own agent's sandbox, confined to the folder of the current round.
+C++ verification adds read access only to the discovered compiler, SDK, include and library
+folders and the folders needed to resolve their symbolic links. It adds no write or network access:
 
 | | Commands | Files | Network |
 | --- | --- | --- | --- |
@@ -115,3 +138,12 @@ Run the tests from this folder with `PYTHONPATH=src python -m unittest discover 
 
 MIT. Solvewright is not affiliated with Anthropic or OpenAI. Claude Code and Codex are their
 respective owners' products; this program runs the versions you installed.
+
+Finished Python and C++ rounds can be kept as reusable exercises. The read-only
+`/sessions/<id>/pack` operation reads frozen assets from `.examiner/pack/`, in the
+library's `solvewright-round-v1` JSON format. It excludes the candidate workspace,
+conversation and personal assessment. The examiner maintains a small manifest
+and a reference for each part as described in `interviewer/references/round-pack.txt`.
+Older rounds without these assets fail with a specific explanation; the connector
+does not infer a starter or a contract from candidate code or chat. The page stores
+kept rounds per reader in IndexedDB, and can export or import one JSON file.

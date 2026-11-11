@@ -21,7 +21,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
-from . import activity, agents
+from . import activity, agents, cpp
+from .round_pack import pack_round
 
 SYNC_FORMAT = "solvewright-interview-sync-v1"
 SYNC_LIMIT = 5_000_000
@@ -69,7 +70,7 @@ OVERTIME_RULE = ("The planned time is up. Do not end the round for that. If you 
 CHOICES = {"provider": ("codex", "claude"), "style": ("quant", "tech"), "track": ("hybrid", "research", "trading", "systems"),
            "mode": ("mock", "coached", "drill"), "difficulty": ("foundation", "standard", "stretch"),
            "ai": ("off", "assistant allowed", "audit AI-written code"), "case": ("fresh", "portals"),
-           "language": ("Python", "Pseudocode")}
+           "language": ("Python", "C++", "Pseudocode")}
 PRIVATE_LOGS = (".examiner/claude-runtime.log", ".examiner/codex-runtime.log")
 HISTORY_ROUNDS = 25
 HISTORY_MESSAGE_CHARS = 3000
@@ -96,6 +97,14 @@ CHECKS_RULE = ("Also write the private checks the page runs in the candidate's b
                "notes are shown to the candidate; check code and expected values never are. Run them against your "
                "reference, and against one plausible wrong solution, before publishing. When you release a later part, "
                "add its checks the same way.")
+CPP_RULE = ("This is a C++ round. Read context/interviewer/references/cpp.txt and follow it for every part. "
+            "Use workspace/solution.hpp, public tests workspace/tests/test_*.cpp, and private checks "
+            ".examiner/checks/test_*.cpp with checks.json labels and notes. Include only the bundled check.hpp test "
+            "framework. The opening must state: C++20, no exceptions (a library throw aborts), one thread, no "
+            "wall-clock timing. Check cost by counting allocations, comparisons or copies. Allocation checks must use "
+            "strings longer than 22 characters. Before releasing each part, compile with -std=c++20 -fno-exceptions "
+            "-O1 -Wall -I. -I.sw, run each TEST in a fresh process, and prove the reference passes and a plausible "
+            "wrong solution fails inside your sandbox. Never release an unverified C++ part.")
 FAST_RULES = ("Answer quickly: the candidate's clock is paused while you work. Use what you already know of this round and "
               "the changes and results above; read a file only if you need more of it. Do not re-read the instructions, do "
               "not rerun tests whose results are above, and do not write checkpoints, hashes or review logs: the runtime "
@@ -532,11 +541,11 @@ class Runtime:
 
     def checks(self, scope, session_id) -> dict:
         """The examiner's private checks and their labels, for the page to run in the browser."""
-        self.load(scope, session_id)
+        state = self.load(scope, session_id)
         folder = self.directory(scope, session_id) / CHECKS
         files, total, manifest = [], 0, None
         if folder.is_dir():
-            for path in sorted(folder.rglob("*.py")):
+            for path in sorted(folder.rglob("*.cpp" if state["settings"]["language"] == "C++" else "*.py")):
                 if path.is_symlink() or not path.is_file() or "__pycache__" in path.parts:
                     continue
                 content = path.read_text(encoding="utf-8", errors="replace")
@@ -555,6 +564,11 @@ class Runtime:
                    "label": str(item.get("label", ""))[:160], "note": str(item.get("note", ""))[:400]}
                   for item in entries or [] if isinstance(item, dict) and item.get("id")][:200]
         return {"files": files, "checks": labels}
+
+    def pack(self, scope, session_id) -> dict:
+        with self.lock:
+            state = self.load(scope, session_id)
+            return pack_round(self.directory(scope, session_id), state)
 
     def rate_limits(self, provider) -> dict | None:
         """The examiner's plan limits as the agent last reported them; None when unknown."""
@@ -628,6 +642,12 @@ class Runtime:
 
     def create(self, scope, settings) -> dict:
         settings = clean_settings(settings)
+        if settings["language"] == "C++":
+            capability = cpp.capability()
+            if not capability["available"]:
+                raise ValueError(capability["reason"])
+            if settings["provider"] == "claude" and not agents.claude_can_sandbox():
+                raise ValueError("C++ verification needs a command sandbox. Use Codex here, or Claude Code on macOS, Linux or WSL2 with its sandbox installed.")
         agents.provider_executable("claude" if settings["provider"] == "claude" else "codex")
         with self.lock:
             earlier = self.sessions(scope)
@@ -642,11 +662,16 @@ class Runtime:
             (directory / "workspace" / "tests").mkdir(parents=True)
             (directory / ".examiner").mkdir()
             self.copy_context(directory)
+            if settings["language"] == "C++":
+                support = directory / "workspace" / ".sw"
+                support.mkdir()
+                shutil.copyfile(self.instructions / "tools" / "check.hpp", support / "check.hpp")
             state = {"id": session_id, "at": stamp(), "title": "Preparing a fresh round", "caseFamily": "", "concepts": [],
                      "settings": settings, "messages": [], "stage": "Preparing", "busy": False, "finished": False,
                      "testRuns": [], "error": "", "activity": "Designing and checking the exercise"}
             write_json(directory / "history-context.json", self.history_context(scope, session_id))
-            write_json(directory / "session-settings.json", {**settings, "styleBrief": brief, "id": session_id, "at": state["at"]})
+            write_json(directory / "session-settings.json", {**settings, "styleBrief": brief, "id": session_id, "at": state["at"],
+                         **({"cppCompiler": cpp.capability()["compiler"]} if settings["language"] == "C++" else {})})
             self.save(scope, state)
             self.start_turn(scope, session_id, "Start a new live runtime interview. Read context/interviewer/interviewer.txt, "
                             "context/interviewer/references/case-generation.txt and context/interviewer/references/curriculum.txt. "
@@ -654,8 +679,9 @@ class Runtime:
                             "do not select from a catalogue. Follow the shape of a good round in case-generation.txt: a "
                             "scenario, a small interface, parts whose new requirements test the design. Set it in "
                             "settings.domain when there is one: general means outside finance. Use the reported portal case "
-                            "only if settings.case is portals. Create the manifest and private reference, verify it, and "
-                            "publish candidate files before asking the opening task. " + CHECKS_RULE + " " + OPENING_RULE +
+                            "only if settings.case is portals. Create the manifest and private reference, plus .examiner/pack/ as specified in references/round-pack.txt, verify it, and "
+                            "publish candidate files before asking the opening task. " +
+                            (CPP_RULE if settings["language"] == "C++" else CHECKS_RULE) + " " + OPENING_RULE +
                             " Return the required structured reply. Do not solve candidate work or expose future stages.",
                             initial=True)
             return self.public(scope, self.load(scope, session_id), True)
@@ -822,6 +848,9 @@ class Runtime:
             parts.append(END_RULE)
         elif minutes is not None and type(state["settings"].get("minutes")) is int and minutes >= state["settings"]["minutes"]:
             parts.append(OVERTIME_RULE)
+        if state["settings"]["language"] == "C++":
+            parts.append(CPP_RULE)
+        parts.append("Maintain .examiner/pack/ per context/interviewer/references/round-pack.txt, preserving the frozen starter and references. Before finishing write its exercise debrief; exclude candidate code, chat and personal assessment.")
         parts.append(FAST_RULES)
         return "\n\n".join(parts)
 
@@ -834,7 +863,8 @@ class Runtime:
         sandbox = agents.claude_can_sandbox()
         if sandbox and self.read_roots is None:
             self.read_roots = agents.python_read_roots()
-        command = agents.claude_command(binary, directory, state, sandbox, self.read_roots or [], effort=effort)
+        roots = [*(self.read_roots or []), *(cpp.discover()["readRoots"] if state["settings"]["language"] == "C++" else [])]
+        command = agents.claude_command(binary, directory, state, sandbox, roots, effort=effort)
         log = (directory / ".examiner" / "claude-runtime.log").open("a", encoding="utf-8")
         process = None
         result = None
